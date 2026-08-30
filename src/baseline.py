@@ -9,6 +9,12 @@ These exist to give every later model something meaningful to beat. A model
 that can't clear the logistic-regression number isn't learning temporal
 structure worth having.
 
+Per-file reads are parallelized across processes (see load_split_features):
+reading tens of thousands of small parquet files one at a time is
+bottlenecked by per-file open/parse overhead rather than raw disk
+throughput, so a process pool gets much better use of both a multi-core
+CPU and an NVMe SSD's ability to service many reads concurrently.
+
 Run: python src\\baseline.py
 Requires data/splits.json (run src\\make_split.py first).
 Writes reports/results.md.
@@ -16,7 +22,9 @@ Writes reports/results.md.
 from __future__ import annotations
 
 import json
+import os
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -31,19 +39,37 @@ RAW = Path("data/raw")
 DATA = Path("data")
 REPORTS = Path("reports")
 
+# Leave one logical core free for the OS/other work; every other core gets
+# a worker. Override by setting this directly if you want to tune it.
+MAX_WORKERS = max(1, (os.cpu_count() or 4) - 1)
+CHUNKSIZE = 64  # sequences handed to each worker per round-trip; reduces IPC overhead
+
+
+def _process_one(path: str) -> np.ndarray | None:
+    """Worker: read and preprocess one parquet file, mean-pool it into a
+    feature vector. Returns None for sequences too short to use. Runs in a
+    separate process -- must not depend on any module-level mutable state."""
+    df = pd.read_parquet(path)
+    if not pp.is_usable_sequence(df):
+        return None
+    arr = pp.process_sequence(df)
+    return pp.mean_pool(arr)
+
 
 def load_split_features(train_csv: pd.DataFrame, ids: list) -> tuple[np.ndarray, np.ndarray]:
     subset = train_csv[train_csv["participant_id"].isin(ids)]
+    paths = [str(RAW / p) for p in subset["path"]]
+    signs = subset["sign"].tolist()
+
     feats, labels = [], []
     skipped = 0
-    for _, row in subset.iterrows():
-        df = pd.read_parquet(RAW / row["path"])
-        if not pp.is_usable_sequence(df):
-            skipped += 1
-            continue
-        arr = pp.process_sequence(df)
-        feats.append(pp.mean_pool(arr))
-        labels.append(row["sign"])
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        for feat, sign in zip(executor.map(_process_one, paths, chunksize=CHUNKSIZE), signs):
+            if feat is None:
+                skipped += 1
+                continue
+            feats.append(feat)
+            labels.append(sign)
     if skipped:
         print(f"  skipped {skipped} degenerate sequences (< {pp.MIN_USABLE_FRAMES} frames)")
     return np.stack(feats), np.array(labels)
