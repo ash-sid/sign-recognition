@@ -1,0 +1,8 @@
+﻿venv/
+data/raw/
+__pycache__/
+*.pyc
+.env
+node_modules/
+web/dist/
+.ipynb_checkpoints/
