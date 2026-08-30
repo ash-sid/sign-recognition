@@ -35,13 +35,16 @@ n_sequences = len(train)
 
 lengths = []
 missing_frac = []
-# Per-hand: fraction of sequences where that hand is ~entirely NaN (i.e.
-# "not used for this sign" per the Session 1 finding), vs used but with some
-# tracking dropout. Same 0.95 threshold as src/preprocessing.py -- keep
-# these in sync if either changes.
+# Per-hand: fraction of sequences where that hand is ~entirely NaN (i.e. not
+# used for this sign), vs used but with some tracking dropout. Same 0.95
+# threshold as src/preprocessing.py -- keep these in sync if either changes.
 UNUSED_HAND_THRESHOLD = 0.95
 hand_unused_count = {"left_hand": 0, "right_hand": 0}
 hand_dropout_frac = {"left_hand": [], "right_hand": []}  # nan frac for hands that ARE used
+both_hands_unused_count = 0  # sequences where neither hand clears the threshold --
+# every sign uses at least one hand, so this almost certainly means tracking
+# failure (bad framing/occlusion) rather than a genuine "no manual signal"
+# case, and such sequences are candidates for dropping rather than training on.
 
 for i, row in enumerate(train.itertuples(index=False), start=1):
     if i % 5000 == 0:
@@ -51,16 +54,21 @@ for i, row in enumerate(train.itertuples(index=False), start=1):
     lengths.append(n_frames)
     missing_frac.append(df["x"].isna().mean())
 
+    unused_this_seq = 0
     for hand in ("left_hand", "right_hand"):
         sub = df[df["type"] == hand]
         nan_frac = sub["x"].isna().mean() if len(sub) else 1.0
         if nan_frac >= UNUSED_HAND_THRESHOLD:
             hand_unused_count[hand] += 1
+            unused_this_seq += 1
         else:
             hand_dropout_frac[hand].append(nan_frac)
+    if unused_this_seq == 2:
+        both_hands_unused_count += 1
 
 lengths = np.array(lengths)
 missing_frac = np.array(missing_frac)
+both_hands_unused_pct = 100 * both_hands_unused_count / n_sequences
 
 # Per-signer sign coverage: does every signer cover most of the vocabulary?
 # Relevant to make_split.py -- if coverage is patchy, holding out any small
@@ -83,8 +91,7 @@ def fmt_hand_stats(hand: str) -> str:
 
 report = f"""# Data notes
 
-Generated from the full dataset ({n_sequences} sequences). Supersedes the
-Session 1 sampled pass.
+Generated from the full dataset ({n_sequences} sequences).
 
 ## Counts
 - Signers (participant_id): {n_signers}
@@ -106,6 +113,7 @@ Session 1 sampled pass.
 ## Per-hand usage
 {fmt_hand_stats("left_hand")}
 {fmt_hand_stats("right_hand")}
+- both hands unused (>= {UNUSED_HAND_THRESHOLD:.0%} NaN on both): {both_hands_unused_count} sequences ({both_hands_unused_pct:.1f}%). Every sign uses at least one hand, so these are very likely tracking failures (bad framing, occlusion) rather than genuine no-manual-signal cases -- consider dropping them rather than training on an all-zero-hands input.
 
 ## Per-signer sign coverage (of {n_signs} total signs)
 - min: {per_signer_coverage.min()}
@@ -118,13 +126,15 @@ Session 1 sampled pass.
 - train_landmark_files/<participant_id>/<sequence_id>.parquet: frame, row_id, type, landmark_index, x, y, z
 - type in {{face, pose, left_hand, right_hand}}; 543 landmarks per frame total
 
-## Follow-ups for Session 2 decisions
+## Follow-ups
 - Confirm TARGET_LEN in src/preprocessing.py (currently {pp.TARGET_LEN}) against
   the p95/p99 above -- longer covers more of the tail but wastes compute on
   the many short sequences.
 - If any signer is well below full coverage, make_split.py's search should
   still find a workable partition (it optimizes for this), but check its
   printed coverage number before trusting the split.
+- Review the both-hands-unused count above; if it's non-trivial, add a filter
+  step before training rather than feeding those sequences in as-is.
 """
 
 (REPORTS / "data-notes.md").write_text(report)

@@ -1,24 +1,25 @@
 # Preprocessing interface contract
 
-Fixed in Session 2. This is the contract between the Python preprocessing/
-modelling side (partner A, sessions 2-5) and the export/browser side
-(partner B, sessions 6-8). Both `src/preprocessing.py` and the eventual
-TypeScript port in `web/src/preprocessing.ts` (Session 7) must implement
-exactly this. **Do not change any of it silently** -- a change here means
-re-checking both implementations agree (a fixture-based parity test is
-planned for Session 7) and re-running anything downstream.
+This is the contract between the Python preprocessing/modelling side and
+the export/browser side. Both `src/preprocessing.py` and the eventual
+TypeScript port in `web/src/preprocessing.ts` must implement exactly this.
+**Do not change any of it silently** -- a change here means re-checking
+both implementations agree (a fixture-based parity test is planned once
+the browser port exists) and re-running anything downstream.
 
 ## Input tensor shape
 
 `(T, 50, 3)` where:
 - `T` = 70 (`TARGET_LEN` in `src/preprocessing.py`), fixed by resampling.
-  Chosen from the Session 1 sampled distribution (median 23, p95 ~125
-  frames); confirm against `reports/data-notes.md`'s full-dataset pass
-  before treating 70 as final.
+  Chosen from the observed sequence-length distribution (median ~22-23,
+  p95 ~135, p99 ~219 frames, per `reports/data-notes.md`) -- 70 sits
+  between p90 and p95, so most sequences are covered without padding the
+  common case out to the long tail. Revisit if a later model's error
+  analysis points to the tail (long signs) specifically.
 - `50` = number of selected landmarks (below).
 - `3` = x, y, z coordinates.
 
-Flattened form (used by the Session 2 baseline and any model that wants a
+Flattened form (used by the mean-pooled baseline and any model that wants a
 flat feature vector): `(T, 150)`.
 
 ## Landmark selection and ordering
@@ -32,8 +33,8 @@ Fixed order, 50 landmarks total:
 | 42-49 | `pose` | 11, 12, 13, 14, 15, 16, 23, 24 (L/R shoulder, L/R elbow, L/R wrist, L/R hip) |
 
 Face/lips landmarks are **not included**. This is a deliberate choice, not
-an oversight: the Session 4 ablation plan is "hands only vs hands + pose"
-(no face variant), and non-manual markers are an explicit project non-goal.
+an oversight: recognition here relies on hand shape/motion and arm
+position, and non-manual markers are an explicit project non-goal.
 
 Position 42 (first pose landmark) is the left shoulder; position 43 is the
 right shoulder. These two are load-bearing for normalization (below) --
@@ -41,8 +42,9 @@ don't reorder `POSE_INDICES` without updating `_normalize`.
 
 ## Missing-value handling
 
-Two distinct cases, handled differently (see `handoff.md` Session 1
-findings for why this distinction matters):
+Two distinct cases, handled differently (missing-hand data in this dataset
+is systematic for one-handed signs, not just tracking noise -- see
+`reports/data-notes.md` per-hand usage stats):
 
 1. **Hand not used for this sign** (>= 95% of that hand's frames are NaN
    for the whole sequence): the hand's landmarks are set to exactly `0.0`
@@ -53,6 +55,10 @@ findings for why this distinction matters):
    axis; leading/trailing gaps filled with the nearest valid value.
 
 The threshold (95%) is `UNUSED_HAND_NAN_THRESHOLD` in `src/preprocessing.py`.
+Note: a sequence where *both* hands cross this threshold is very likely a
+tracking failure rather than a genuine "no manual signal" case (every sign
+uses at least one hand) -- see the both-hands-unused count in
+`reports/data-notes.md` and consider filtering those out before training.
 
 ## Normalization formula
 
@@ -81,7 +87,7 @@ original frame count.
 
 ## What's NOT fixed yet
 
-- `TARGET_LEN` = 70 is a starting value pending confirmation against the
-  full-dataset pass (see `reports/data-notes.md`).
-- Vocabulary size (full 250 signs vs a curated subset) -- still open per
+- Whether to filter out both-hands-unused sequences before training (see
+  Missing-value handling above).
+- Vocabulary size (full 250 signs vs a curated subset) -- still open, see
   `handoff.md`.
