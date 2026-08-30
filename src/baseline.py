@@ -112,8 +112,8 @@ def main() -> None:
 
 Logistic regression fit time: {fit_seconds:.1f}s.
 
-Any Session 3+ model needs to clear the logistic-regression test top-1
-number above to be worth the added complexity of a temporal model.
+Any subsequent temporal model needs to clear the logistic-regression test
+top-1 number above to be worth the added complexity over mean-pooling.
 """
     REPORTS.mkdir(exist_ok=True)
     (REPORTS / "results.md").write_text(report)

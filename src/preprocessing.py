@@ -31,10 +31,10 @@ POSE_INDICES = [11, 12, 13, 14, 15, 16, 23, 24]
 HAND_INDICES = list(range(21))
 
 # Fixed output ordering: left_hand (21) -> right_hand (21) -> pose (8) = 50.
-# Face/lips landmarks are deliberately excluded: the Session 4 ablation plan
-# is "hands only vs hands + pose", and non-manual markers are an explicit
-# project non-goal (see README). Keeping face out of the baseline avoids
-# quietly relying on a signal the project isn't scoped to use.
+# Face/lips landmarks are deliberately excluded: recognition here is meant
+# to rely on hand shape/motion and arm position, not facial grammar or other
+# non-manual markers (see README non-goals). Keeping face out of the
+# baseline avoids quietly relying on a signal the project isn't scoped to use.
 LANDMARK_GROUPS: list[tuple[str, list[int]]] = [
     ("left_hand", HAND_INDICES),
     ("right_hand", HAND_INDICES),
@@ -43,16 +43,17 @@ LANDMARK_GROUPS: list[tuple[str, list[int]]] = [
 NUM_LANDMARKS = sum(len(idxs) for _, idxs in LANDMARK_GROUPS)  # 50
 NUM_COORDS = 3  # x, y, z
 
-# Fixed sequence length after resampling. Chosen from the Session 1 sampled
-# distribution (median 23, p95 ~125 frames); confirm against the full-dataset
-# pass in reports/data-notes.md before treating this as final -- update here
-# and in reports/contract.md together if it changes.
+# Fixed sequence length after resampling, chosen from the observed length
+# distribution (see reports/data-notes.md: median ~22-23 frames, p95 ~125-135,
+# long tail beyond that). Update here and in reports/contract.md together if
+# it changes.
 TARGET_LEN = 70
 
 # A hand with at least this fraction of NaN frames is treated as "not used
 # for this sign" (zero-filled) rather than "tracking lost partway through"
-# (interpolated). See handoff Session 1 findings on systematic missing-hand
-# data for one-handed signs.
+# (interpolated). Missing-hand data in this dataset is systematic for
+# one-handed signs, not just tracking noise -- see reports/data-notes.md
+# for per-hand usage rates.
 UNUSED_HAND_NAN_THRESHOLD = 0.95
 
 # Sequences with fewer valid frames than this are considered too degenerate
@@ -91,8 +92,8 @@ def flatten(arr: np.ndarray) -> np.ndarray:
 
 def mean_pool(arr: np.ndarray) -> np.ndarray:
     """(T, NUM_LANDMARKS, NUM_COORDS) -> (NUM_LANDMARKS * NUM_COORDS,).
-    Used for the Session 2 logistic-regression baseline, not the sequence
-    model in later sessions."""
+    Collapses the time axis by averaging -- useful for simple non-temporal
+    baselines (e.g. logistic regression), not the sequence models."""
     return flatten(arr).mean(axis=0)
 
 
