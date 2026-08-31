@@ -13,7 +13,7 @@
 | Majority class | 0.0040 | 0.0043 | — | — |
 | Logistic regression (mean-pooled landmarks) | 0.2496 | 0.2671 | 0.5050 | 0.5267 |
 
-Logistic regression fit time: 39.6s.
+Logistic regression fit time: 38.9s.
 
 Any subsequent temporal model needs to clear the logistic-regression test
 top-1 number above to be worth the added complexity over mean-pooling.
