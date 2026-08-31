@@ -82,7 +82,7 @@ def main() -> None:
             "WARNING: coverage below 95% -- some signs in val/test have "
             "little or no training data for that sign. Consider whether "
             "N_VAL_SIGNERS/N_TEST_SIGNERS need to shrink, or whether this "
-            "is acceptable given the vocabulary-size decision in handoff.md."
+            "is acceptable given the current vocabulary size."
         )
 
     train_df = train[train["participant_id"].isin(train_ids)]

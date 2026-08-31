@@ -89,5 +89,4 @@ original frame count.
 
 - Whether to filter out both-hands-unused sequences before training (see
   Missing-value handling above).
-- Vocabulary size (full 250 signs vs a curated subset) -- still open, see
-  `handoff.md`.
+- Vocabulary size (full 250 signs vs a curated subset) -- still open.
