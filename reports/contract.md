@@ -55,10 +55,11 @@ is systematic for one-handed signs, not just tracking noise -- see
    axis; leading/trailing gaps filled with the nearest valid value.
 
 The threshold (95%) is `UNUSED_HAND_NAN_THRESHOLD` in `src/preprocessing.py`.
-Note: a sequence where *both* hands cross this threshold is very likely a
-tracking failure rather than a genuine "no manual signal" case (every sign
-uses at least one hand) -- see the both-hands-unused count in
-`reports/data-notes.md` and consider filtering those out before training.
+A sequence where *both* hands cross this threshold is a tracking failure
+rather than a genuine "no manual signal" case, since every sign uses at
+least one hand. `preprocessing.is_both_hands_unused()` identifies these and
+every script that reads the dataset drops them from all three splits; see
+the count in `reports/data-notes.md`.
 
 ## Normalization formula
 
@@ -79,6 +80,12 @@ the signer's distance from and position relative to the camera. Applied
 "absent" stays exactly `0.0` rather than getting shifted by the shoulder
 center).
 
+`process_sequence()` takes a `normalize` argument that can skip this step.
+It exists only to measure how much normalization contributes to accuracy,
+and is **not** part of this contract: the exported model and the browser
+port always normalize. `normalize=True` is the default and the only
+behaviour anything downstream should implement.
+
 ## Resampling
 
 Fixed-length output via per-landmark, per-coordinate linear interpolation
@@ -87,6 +94,4 @@ original frame count.
 
 ## What's NOT fixed yet
 
-- Whether to filter out both-hands-unused sequences before training (see
-  Missing-value handling above).
 - Vocabulary size (full 250 signs vs a curated subset) -- still open.

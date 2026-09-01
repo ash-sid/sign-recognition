@@ -83,13 +83,25 @@ def is_both_hands_unused(df: pd.DataFrame) -> bool:
     return True
 
 
-def process_sequence(df: pd.DataFrame, target_len: int = TARGET_LEN) -> np.ndarray:
+def process_sequence(
+    df: pd.DataFrame, target_len: int = TARGET_LEN, normalize: bool = True
+) -> np.ndarray:
     """Raw long-format landmark dataframe for one sequence -> fixed-shape
     array of shape (target_len, NUM_LANDMARKS, NUM_COORDS), normalized and
-    with missing values filled. Landmark order matches LANDMARK_GROUPS."""
+    with missing values filled. Landmark order matches LANDMARK_GROUPS.
+
+    normalize=False skips the shoulder-relative normalization step and
+    leaves coordinates in the raw MediaPipe frame. This exists only to
+    measure how much normalization contributes to accuracy; it is not part
+    of the interface contract in reports/contract.md, and nothing outside
+    that measurement (the exported model, the browser port) should use it.
+    Note that raw x/y live in roughly [0, 1] rather than being centered on
+    the signer, so 0.0 is a plausible real coordinate rather than an
+    unambiguous "hand not used" marker."""
     arr, group_ranges = _extract(df)
     arr, unused_hands = _fill_missing(arr, group_ranges)
-    arr = _normalize(arr, group_ranges)
+    if normalize:
+        arr = _normalize(arr, group_ranges)
     # Re-zero unused hands *after* normalization: normalization subtracts a
     # shared shoulder-center from every landmark, which would otherwise shift
     # the "hand not used" placeholder away from zero and turn "absent" into
