@@ -1,0 +1,3 @@
+run_name,model,landmarks,normalized,augment,shuffle_time,gru_pool,optimizer,lr_schedule,lr,dropout,seed,epochs_run,best_epoch,val_top1,test_top1,test_top5,train_seconds
+v1_gru,gru,hands_pose,true,false,false,last,adam,none,0.001,0.3,0,51,41,0.4938,0.4687,0.7244,99
+v1_cnn,cnn,hands_pose,true,false,false,,adam,none,0.001,0.3,0,29,19,0.5162,0.4869,0.7578,65
