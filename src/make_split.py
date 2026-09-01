@@ -94,7 +94,7 @@ def main() -> None:
 
     DATA.mkdir(exist_ok=True)
     out = {"train": train_ids, "val": val_ids, "test": test_ids}
-    (DATA / "splits.json").write_text(json.dumps(out, indent=2))
+    (DATA / "splits.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
     print(f"Written to {DATA / 'splits.json'}")
 
 
