@@ -67,6 +67,22 @@ def is_usable_sequence(df: pd.DataFrame) -> bool:
     return df["frame"].nunique() >= MIN_USABLE_FRAMES
 
 
+def is_both_hands_unused(df: pd.DataFrame) -> bool:
+    """Cheap pre-filter: are both hands >= UNUSED_HAND_NAN_THRESHOLD NaN for
+    this sequence? Every sign in this dataset uses at least one hand, so a
+    sequence tripping this is very likely a tracking failure (bad framing,
+    occlusion) rather than a genuine no-manual-signal case -- see
+    reports/data-notes.md for the full-dataset rate. Call before
+    process_sequence when scanning many sequences; safe to use as a training
+    filter independently of is_usable_sequence."""
+    for hand in ("left_hand", "right_hand"):
+        sub = df[df["type"] == hand]
+        nan_frac = sub["x"].isna().mean() if len(sub) else 1.0
+        if nan_frac < UNUSED_HAND_NAN_THRESHOLD:
+            return False
+    return True
+
+
 def process_sequence(df: pd.DataFrame, target_len: int = TARGET_LEN) -> np.ndarray:
     """Raw long-format landmark dataframe for one sequence -> fixed-shape
     array of shape (target_len, NUM_LANDMARKS, NUM_COORDS), normalized and
