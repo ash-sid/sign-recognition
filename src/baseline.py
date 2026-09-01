@@ -76,7 +76,7 @@ def load_split_features(train_csv: pd.DataFrame, ids: list) -> tuple[np.ndarray,
 
 
 def main() -> None:
-    splits = json.loads((DATA / "splits.json").read_text())
+    splits = json.loads((DATA / "splits.json").read_text(encoding="utf-8"))
     train_csv = pd.read_csv(RAW / "train.csv")
 
     print("Loading train split...")
@@ -142,7 +142,7 @@ Any subsequent temporal model needs to clear the logistic-regression test
 top-1 number above to be worth the added complexity over mean-pooling.
 """
     REPORTS.mkdir(exist_ok=True)
-    (REPORTS / "results.md").write_text(report)
+    (REPORTS / "results.md").write_text(report, encoding="utf-8")
     print(report)
     print(f"Written to {REPORTS / 'results.md'}")
 
