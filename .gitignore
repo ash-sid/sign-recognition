@@ -7,3 +7,6 @@ __pycache__/
 node_modules/
 web/dist/
 .ipynb_checkpoints/
+models/*.pt
+!models/v1_gru.pt
+!models/v1_cnn.pt
