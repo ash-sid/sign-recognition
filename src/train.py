@@ -86,6 +86,9 @@ RUN_FIELDS = [
     "normalized",
     "augment",
     "shuffle_time",
+    "aug_mirror_p",
+    "aug_warp",
+    "aug_jitter",
     "gru_pool",
     "optimizer",
     "lr_schedule",
@@ -99,7 +102,7 @@ RUN_FIELDS = [
     "test_top5",
     "train_seconds",
 ]
-CONFIG_FIELDS = RUN_FIELDS[1:12]
+CONFIG_FIELDS = RUN_FIELDS[1:15]
 
 
 # --- Data -------------------------------------------------------------------
@@ -359,6 +362,16 @@ def row_notes(row: dict[str, str]) -> str:
     notes = []
     if row.get("shuffle_time") == "true":
         notes.append("frames shuffled")
+    if row.get("augment") == "true":
+        # A blank strength means the run predates these columns and used the
+        # defaults, so only an explicit zero counts as a disabled transform.
+        enabled = [
+            label
+            for label, field in (("mirror", "aug_mirror_p"), ("warp", "aug_warp"), ("jitter", "aug_jitter"))
+            if row.get(field) != "0"
+        ]
+        if len(enabled) < 3:
+            notes.append(f"{'/'.join(enabled) if enabled else 'none'} only")
     if row.get("gru_pool") == "mean":
         notes.append("mean pooling")
     if row.get("optimizer") != "adam":
@@ -412,6 +425,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-normalize", action="store_true", help="use the un-normalized cache variant")
     p.add_argument("--augment", action="store_true", help="mirror/warp/jitter training batches")
     p.add_argument("--shuffle-time", action="store_true", help="permute frames on all splits (diagnostic)")
+    p.add_argument("--aug-mirror-p", type=float, default=0.5, help="probability of mirroring a training sample")
+    p.add_argument("--aug-warp", type=float, default=0.2, help="maximum time-warp strength; 0 disables")
+    p.add_argument("--aug-jitter", type=float, default=0.01, help="coordinate noise standard deviation; 0 disables")
     p.add_argument("--gru-pool", choices=["last", "mean"], default="last")
     p.add_argument("--hidden-size", type=int, default=128)
     p.add_argument("--num-layers", type=int, default=2)
@@ -514,7 +530,9 @@ def main() -> None:
             for xb, yb in train_loader:
                 xb, yb = xb.to(device), yb.to(device)
                 if args.augment:
-                    xb = augment.augment_batch(xb, mirror_perm)
+                    xb = augment.augment_batch(
+                        xb, mirror_perm, args.aug_mirror_p, args.aug_warp, args.aug_jitter
+                    )
                 optimizer.zero_grad()
                 loss = criterion(model(to_model_input(xb, args.shuffle_time)), yb)
                 loss.backward()
@@ -587,6 +605,9 @@ def main() -> None:
         "normalized": str(normalize).lower(),
         "augment": str(args.augment).lower(),
         "shuffle_time": str(args.shuffle_time).lower(),
+        "aug_mirror_p": f"{args.aug_mirror_p:g}" if args.augment else "",
+        "aug_warp": f"{args.aug_warp:g}" if args.augment else "",
+        "aug_jitter": f"{args.aug_jitter:g}" if args.augment else "",
         "gru_pool": args.gru_pool if args.model == "gru" else "",
         "optimizer": args.optimizer,
         "lr_schedule": args.lr_schedule,
