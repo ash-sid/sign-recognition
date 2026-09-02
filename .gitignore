@@ -10,3 +10,4 @@ web/dist/
 models/*.pt
 !models/v1_gru.pt
 !models/v1_cnn.pt
+!models/abl_hands_aug.pt
