@@ -1,3 +1,26 @@
+# Results
+
+Recognizing 250 isolated American Sign Language signs from webcam video. Each
+example is one person performing one sign; the model reads the sequence of hand
+landmark positions MediaPipe extracts from the video and predicts which sign it
+was. The dataset is 94,477 sequences from 21 signers.
+
+**The production model gets 61.0% of held-out sequences right on its first guess
+and 82.6% within its top five, on three signers it never saw during training.**
+It classifies a sequence in 0.6 ms on one CPU thread.
+
+Two things matter more for reading that number than the number itself. Roughly
+ten points of the gap to perfect accuracy is not the model at all -- it is
+sequences where MediaPipe never got a good look at the hand, and the model
+scores 71% where tracking is clean against 50% where more than half the frames
+are missing. And the three test signers all sign with the opposite hand to the
+training majority, which is an accident of how the split was drawn and which
+inflates part of what is reported below as a modelling gain. Both are measured
+rather than estimated, in the error analysis section.
+
+This file is the record of how that model was arrived at: what was tried, what
+was measured, and which conclusions the measurements do and do not support.
+
 <!-- BASELINES_START -->
 # Results
 
@@ -67,6 +90,7 @@ A model has to clear the mean-pooled logistic regression's test top-1 of 0.2671
 to be worth its added complexity over ignoring time entirely.
 
 <!-- RUNS_END -->
+
 ## Reading these results
 
 ### Protocol
@@ -77,6 +101,22 @@ All numbers are on the signer-independent split (15 train / 3 val / 3 test signe
 **Noise floor: 0.7pp.** Three seeds of the best configuration gave a standard deviation
 of 0.35pp, so differences below roughly 0.7pp (2 sd) are not interpretable and are
 described as "within noise" throughout.
+
+That floor applies to comparisons between training runs and to nothing else. Per-class
+accuracy in the error analysis is a separate quantity with its own, much larger
+uncertainty: at roughly 57 test sequences per sign, a single sign's accuracy carries a
+95% interval near +/-13pp.
+
+**The split has a confound that was found late and is not corrected.** Signers are
+consistent about which of the two hand slots their dominant hand occupies, and the
+splits do not draw from the same mixture: training is 10 right-slot signers to 4
+left-slot with one mixed, while all three test signers are left-slot. A random 3-signer
+test set lands that way about 4% of the time, and the split search optimized only for
+sign-vocabulary coverage, so nothing checked for it. The split is therefore
+signer-independent *and* handedness-shifted, and the two cannot be separated. The
+consequence is quantified under augmentation below. It is documented rather than fixed
+because redrawing the split would invalidate the comparability of every run in the
+table.
 
 Two training protocols appear in the table and **should not be compared across**:
 
@@ -112,10 +152,10 @@ user standing closer, further away, or off to one side is precisely the case
 normalization handles and precisely the case this dataset does not contain. The result
 says the evaluation lacks the variation, not that the method is useless.
 
-### Augmentation is mirroring
+### Augmentation is mirroring, and mirroring is two things
 
-Augmentation is the single largest effect in the table at +4.31pp. Decomposed against a
-matched unaugmented baseline, each transform run alone:
+Augmentation is the single largest training effect in the table at +4.69pp. Decomposed
+against a matched unaugmented baseline, each transform run alone:
 
 | Transform | Test top-1 | vs unaugmented |
 |---|---|---|
@@ -126,12 +166,28 @@ matched unaugmented baseline, each transform run alone:
 Mirroring alone is statistically indistinguishable from all three combined. Time warp
 and landmark jitter contribute nothing measurable.
 
-The likely mechanism is handedness. With only fifteen training signers, the model can
-treat "the dominant hand occupies the right-hand slot" as though it were part of a sign,
-which then fails on held-out signers whose dominant hand differs. Mirroring swaps the
-hand blocks and reflects the coordinates together, removing handedness as something the
-model can key on. That reframes part of the signer-generalization gap as a specific,
-fixable overfitting problem rather than a diffuse one.
+*Why* mirroring helps was tested directly rather than assumed, by scoring both models a
+second time on a mirrored copy of the test set. Mirroring a sequence is a valid
+re-performance of the same sign by someone whose dominant hand is the other one, so a
+model that has not keyed on which hand slot is filled should score the same either way.
+
+- The **unaugmented** model improves by 2.10pp when the test set is mirrored, and
+  36.7% of its predictions change. It scores *better* on flipped input, which is only
+  possible if the test signers occupy the opposite slot from the training majority —
+  reflecting them makes them look like the training data.
+- The **augmented** model moves by 0.01pp (142 sequences lost, 143 gained, p = 1), with
+  4.6% of predictions changing. It is very close to indifferent to the slot.
+
+So mirroring buys two separable things. Aligning the unaugmented model's input with the
+slot it was trained on recovers 2.10pp of the 4.69pp, meaning **roughly 45% of the
+augmentation gain is the model no longer depending on which hand slot the data is in,
+and the remaining 55% is augmentation acting as ordinary augmentation.** Both halves are
+real, but only the second would survive on an evaluation split whose handedness mixture
+matched training. An earlier draft of this file attributed the whole effect to
+handedness; that was an untested hypothesis and it was about half right.
+
+The 4.6% residual prediction churn also matters downstream: a live demo fed a mirrored
+camera image will return a different answer for about one sequence in twenty-two.
 
 ### Why the 1D-CNN beats the GRU
 
@@ -166,90 +222,54 @@ peaking at epoch 25 and declining thereafter. Augmentation recovers 4.7pp but le
 convolution's inductive bias here. The transformer is kept in the table as a measured
 negative result, not adopted.
 
+### What actually limits accuracy
+
+The full breakdown is in the error analysis below; the short version is that the two
+largest effects on whether a sequence is classified correctly are properties of the
+input, not choices about the model.
+
+**Hand tracking quality dominates everything.** Accuracy runs from 71.2% on sequences
+where the tracked hand is detected in almost every frame down to 50.2% where more than
+half the frames are missing — a 21pp spread, larger than any architecture or training
+decision in this project. 36.8% of the test split falls in that worst bucket. If every
+sequence were tracked as cleanly as the best bucket, test top-1 would be around 71%
+rather than 61%. The same pattern holds on the validation split, so it is not a quirk of
+one set of signers.
+
+**Short sequences are hard and cannot be fixed by resampling.** Accuracy is 57.1% on
+sequences of 22 frames or fewer, which are 39% of the test split, against about 65% in
+the middle of the range. This is not the tracking effect in disguise: length and
+missing-frame rate are only weakly correlated (Spearman 0.04 on test, 0.12 on
+validation) and in the opposite direction, so short sequences are tracked *better* and
+still score lower. Upsampling cannot recover information the camera never captured.
+
+Accuracy also falls to 52.9% above 135 frames, where resampling discards more than half
+the frames — but that bucket is 6.9% of the split, so raising the resampling target
+would buy under a point while doubling the model's input length. The target stays at 70.
+
+**Some of the remaining error looks irreducible.** The signs the model confuses are
+overwhelmingly near-synonyms and minimal pairs: pen/pencil, lips/mouth, nap/sleep,
+cut/scissors, awake/wake, duck/goose. Five pairs appear in the top fifteen of both the
+validation and test splits, so these are properties of the sign pairs rather than
+sampling noise, and 14 of the 15 test pairs are confused in both directions. The model
+sees hand landmarks only — face and lip landmarks are excluded by design — so any pair
+distinguished mainly by mouth shape or another non-manual marker is not separable by
+this model in principle rather than merely in practice.
+
 ### Best model
 
 `abl_hands_aug` — 1D-CNN, hands-only input, mirrored/warped/jittered training batches,
-120 epochs on a cosine schedule. **Test top-1 61.03%, test top-5 82.59%.**
+120 epochs on a cosine schedule. **Test top-1 61.03%, test top-5 82.59%**, at 0.39M
+parameters and 0.60 ms per sequence on a single CPU thread.
 
 It is also the best of its three seeds by *validation* top-1 (0.5818 against 0.5726 and
 0.5777), so the selection did not use the test set.
 
-<!-- ERROR_ANALYSIS_START -->
-## Error analysis
-
-`abl_hands_aug` on the val split: 58.18% top-1 (95% CI 57.33%-59.02%), 80.85% top-5, over 13075 sequences from 3 signers.
-
-### Which hand the data is in
-
-| Split | Left slot | Mixed | Right slot |
-|---|---|---|---|
-| train | 4 | 1 | 10 |
-| val | 1 | 0 | 2 |
-| test | 3 | 0 | 0 |
-
-Each signer's one-handed sequences overwhelmingly put the active hand in the same block, so the block is a stable property of a signer. The training and evaluation splits do not draw from the same mixture of them.
-
-This describes the recording, not the signer. MediaPipe assigns left and right from the camera's point of view, so a left-handed signer and a right-handed one captured in a mirrored frame are indistinguishable here. The model only ever sees which block is filled, so the distinction does not change anything below.
-
-### Tracking quality
-
-| Frames missing on the tracked hand | Sequences | Top-1 | 95% CI |
-|---|---|---|---|
-| <10% | 2800 | 68.04% | 66.28%-69.74% |
-| 10-25% | 2124 | 67.89% | 65.87%-69.84% |
-| 25-50% | 3557 | 60.64% | 59.02%-62.23% |
-| >50% | 4594 | 45.78% | 44.34%-47.22% |
-
-The landmark files are not uniformly complete, and the model's input does not record how much of a sequence was interpolated rather than observed.
-
-### Sequence length
-
-| Frames before resampling | Sequences | Top-1 | 95% CI |
-|---|---|---|---|
-| <=22 | 6037 | 51.70% | 50.44%-52.96% |
-| 23-70 | 5001 | 62.97% | 61.62%-64.30% |
-| 71-135 | 1060 | 68.87% | 66.02%-71.58% |
-| >135 | 977 | 62.13% | 59.05%-65.12% |
-
-Sequences longer than the resampling target have frames discarded; shorter ones are interpolated up. Signing tempo varies by signer, so a length effect and a signer effect are easy to confuse -- the per-signer breakdown is in the accompanying CSV.
-
-### One- and two-handed signs
-
-This split has 156 sequences (1.19%) in which both hands were detected, and no sign reaches 28% two-handed sequences (median 0.0%). Signs that are two-handed when performed are not two-handed in this data: the non-dominant hand is rarely tracked. Whether the model handles two-handed signs worse cannot be answered from these landmarks, because there is almost no contrast to measure.
-
-### Which signs collide
-
-| Actual | Confused with | -> | <- | Combined rate |
-|---|---|---|---|---|
-| awake | wake | 15 | 28 | 75.4% |
-| glasswindow | tooth | 23 | 1 | 49.7% |
-| goose | tongue | 0 | 19 | 47.5% |
-| duck | goose | 17 | 7 | 46.4% |
-| lamp | shhh | 19 | 0 | 46.3% |
-| hear | listen | 2 | 31 | 44.2% |
-| boat | there | 12 | 10 | 43.9% |
-| cereal | grass | 15 | 2 | 41.3% |
-| penny | think | 14 | 6 | 37.3% |
-| same | stay | 2 | 17 | 36.8% |
-| chin | say | 3 | 16 | 36.8% |
-| pen | pencil | 6 | 14 | 36.3% |
-| ear | hear | 0 | 25 | 35.7% |
-| look | see | 25 | 0 | 35.2% |
-| cat | kitty | 11 | 7 | 33.9% |
-
-Ranked by the two conditional error rates summed, so a pair appears for being mutually confusable rather than for being common. 11 of 15 are confused in both directions.
-
-The model sees hand landmarks only. Face and lip landmarks are excluded by design, so any pair of signs distinguished mainly by mouth shape or other non-manual markers is not separable by this model in principle rather than merely in practice.
-
-### Per-class accuracy
-
-Across 250 signs: min 0.00%, lower quartile 45.13%, median 60.36%, upper quartile 72.88%, max 98.28%. 1 signs are never predicted correctly.
-
-These are not ranked, deliberately. The median sign has 53 sequences in this split, so a sign scoring 60% carries a 95% interval of roughly 46.94%-72.41%. A table of the worst individual signs would mostly be reporting which classes got an unlucky draw, and would not reproduce on another test set. Per-sign numbers are in the accompanying CSV for anyone who wants them with that caveat attached.
-
-![Confusion matrix for the least accurate signs](reports/confusion_abl_hands_aug_val.png)
-
-<!-- ERROR_ANALYSIS_END -->
+Read that 61.03% with two qualifications. It is measured on a test set whose signers all
+occupy the opposite hand slot from the training majority, which makes it a harder
+evaluation than a representative one would be and which inflates the measured value of
+augmentation. And roughly ten points of the shortfall from perfect accuracy is attributable
+to sequences MediaPipe tracked poorly, which no change to this model would recover.
 
 <!-- ERROR_ANALYSIS_TEST_START -->
 ## Error analysis
@@ -333,3 +353,21 @@ These are not ranked, deliberately. The median sign has 57 sequences in this spl
 ![Confusion matrix for the least accurate signs](confusion_abl_hands_aug_test.png)
 
 <!-- ERROR_ANALYSIS_TEST_END -->
+
+<!-- LATENCY_START -->
+## Inference latency
+
+`abl_hands_aug` classifying one sequence on the CPU, batch size 1, input (1, 70, 126), 0.39M parameters. 300 timed calls after 30 discarded warmup calls, on AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD.
+
+| Threads | Median | p95 | p99 | Min | Max |
+|---|---|---|---|---|---|
+| 1 | 0.60 ms | 0.72 ms | 0.78 ms | 0.59 ms | 0.80 ms |
+| 8 (default) | 0.44 ms | 0.52 ms | 0.58 ms | 0.37 ms | 0.74 ms |
+
+Single-threaded is the number to plan against. It is the conservative bound and the closer analogue of a browser, which will not hand one inference every core on the machine.
+
+At 20 FPS the whole pipeline has 50 ms per frame. The model forward pass uses 1.2% of that single-threaded at the median. The remainder covers landmark extraction, which is expected to dominate, so this figure shows the classifier is not the constraint rather than showing the pipeline will hold.
+
+Measured through PyTorch on the CPU. The browser will run a different runtime on different hardware, so treat this as a reference point for the model's cost, not as a prediction of what the demo will do.
+
+<!-- LATENCY_END -->
