@@ -270,6 +270,119 @@ def main() -> int:
         r = run(root, "evaluate.py", "--run-name", "not_a_run", "--split", "test")
         check("missing checkpoint reports the run it needs", r.returncode != 0 and "not_a_run" in (r.stdout + r.stderr))
 
+
+        # --- error analysis -------------------------------------------------
+        r = run(root, "error_analysis.py", "--run-name", "dry_cnn", "--split", "test",
+                "--compare-run", "dry_cnn", "--top-collisions", "5")
+        check("error analysis succeeds", r.returncode == 0)
+        if r.returncode != 0:
+            print(r.stdout[-4000:], r.stderr[-4000:])
+            return 1
+
+        rep = root / "reports"
+        for name in ("per_class_dry_cnn_test.csv", "confusion_dry_cnn_test.csv",
+                     "confusion_dry_cnn_test.png", "signers_dry_cnn_test.csv",
+                     "length_by_signer_dry_cnn_test.csv"):
+            check(f"error analysis wrote {name}", (rep / name).exists())
+
+        pc = pd.read_csv(rep / "per_class_dry_cnn_test.csv")
+        check("per-class covers every sign present", len(pc) == preds["true"].nunique())
+        check("per-class counts sum to the split", pc["n"].sum() == len(preds))
+        check("per-class accuracy in [0,1]", pc["top1"].between(0, 1).all())
+        check("per-class CI brackets the estimate",
+              ((pc["ci_lo"] <= pc["top1"] + 1e-9) & (pc["top1"] <= pc["ci_hi"] + 1e-9)).all())
+        check("per-class top5 >= top1", (pc["top5"] >= pc["top1"] - 1e-9).all())
+
+        conf = pd.read_csv(rep / "confusion_dry_cnn_test.csv", index_col=0)
+        check("confusion matrix totals the split", conf.to_numpy().sum() == len(preds))
+        diag = sum(conf.loc[s, s] for s in conf.index if s in conf.columns)
+        check("confusion diagonal equals correct count", diag == int((preds["true_rank"] == 1).sum()))
+
+        sg = pd.read_csv(rep / "signers_dry_cnn_test.csv")
+        check("signer table covers all signers", len(sg) == 4)
+        check("signer slots labelled", set(sg["slot"]) <= {"left", "mixed", "right"})
+        check("pct_right within [0,100]", sg["pct_right"].between(0, 100).all())
+
+        results = (rep / "results.md").read_text(encoding="utf-8")
+        check("error analysis section written", "<!-- ERROR_ANALYSIS_TEST_START -->" in results)
+        check("runs section still present", "<!-- RUNS_START -->" in results)
+        check("mirror probe reported", "mirrored" in results.lower())
+        check("per-class ranking caveat present", "not ranked" in results)
+
+        # Bin labels are ranges that do not sort as text; a lexicographic
+        # ordering would present a monotone trend as noise.
+        def bins_ordered(section_start, labels):
+            """Bins present in the table must appear in range order. A small
+            split need not populate every bin, so absent ones are skipped."""
+            body = results.split(section_start)[1].split("###")[0]
+            positions = {l: body.index("| " + l + " |") for l in labels if "| " + l + " |" in body}
+            present = [l for l in labels if l in positions]
+            by_position = [l for l, _ in sorted(positions.items(), key=lambda kv: kv[1])]
+            return len(present) >= 2 and present == by_position
+        check("length bins in range order",
+              bins_ordered("### Sequence length", ["<=22", "23-70", "71-135", ">135"]))
+        check("tracking bins in range order",
+              bins_ordered("### Tracking quality", ["<10%", "10-25%", "25-50%", ">50%"]))
+
+        # Rerunning must replace its own section, not append a second one.
+        r = run(root, "error_analysis.py", "--run-name", "dry_cnn", "--split", "test",
+                "--top-collisions", "5")
+        check("error analysis rerun succeeds", r.returncode == 0)
+        again = (rep / "results.md").read_text(encoding="utf-8")
+        check("section not duplicated on rerun", again.count("<!-- ERROR_ANALYSIS_TEST_START -->") == 1)
+        check("runs section survives rerun", "<!-- RUNS_START -->" in again)
+
+        # Analysing a second split must not replace the first split's section.
+        r = run(root, "error_analysis.py", "--run-name", "dry_cnn", "--split", "val",
+                "--top-collisions", "3")
+        check("val split analysis succeeds", r.returncode == 0)
+        both = (rep / "results.md").read_text(encoding="utf-8")
+        check("test section survives a val run", "<!-- ERROR_ANALYSIS_TEST_START -->" in both)
+        check("val section added alongside", "<!-- ERROR_ANALYSIS_VAL_START -->" in both)
+
+        # results.md lives in reports/, so the figure link must not carry a
+        # reports/ prefix or it resolves to reports/reports/.
+        check("figure link is relative to the report file",
+              "](confusion_dry_cnn_test.png)" in both and "](reports/" not in both)
+
+        # A separate destination keeps diagnostic splits out of the headline file.
+        r = run(root, "error_analysis.py", "--run-name", "dry_cnn", "--split", "val",
+                "--top-collisions", "3", "--report-path", "reports/diagnostics.md")
+        check("alternate report path succeeds", r.returncode == 0)
+        check("alternate report file written", (rep / "diagnostics.md").exists())
+
+        # --- latency --------------------------------------------------------
+        r = run(root, "latency.py", "--run-name", "dry_cnn",
+                "--warmup", "3", "--iterations", "20")
+        check("latency benchmark succeeds", r.returncode == 0)
+        if r.returncode != 0:
+            print(r.stdout[-3000:], r.stderr[-3000:])
+            return 1
+        lat = (rep / "results.md").read_text(encoding="utf-8")
+        check("latency section written", "<!-- LATENCY_START -->" in lat)
+        check("latency reports both thread counts", "1 |" in lat and "(default)" in lat)
+        check("latency did not clobber the error analysis",
+              "<!-- ERROR_ANALYSIS_TEST_START -->" in lat)
+        import re as _re
+        ms = [float(v) for v in _re.findall(r"([0-9.]+) ms", lat)]
+        check("latency values are positive", len(ms) >= 10 and all(v > 0 for v in ms))
+        # Percentiles are order statistics of the same sample, so this
+        # ordering must hold for any input; a violation means the summary
+        # is indexing the sorted timings wrongly.
+        rows = _re.findall(r"\| ([0-9.]+) ms \| ([0-9.]+) ms \| ([0-9.]+) ms \| ([0-9.]+) ms \| ([0-9.]+) ms \|", lat)
+        check("percentiles ordered within each row",
+              len(rows) == 2 and all(
+                  float(mn) <= float(med) <= float(p95) <= float(p99) <= float(mx)
+                  for med, p95, p99, mn, mx in rows))
+
+        # A predictions file that does not line up with the metadata must fail.
+        bad = pd.read_csv(rep / "preds_dry_cnn_test.csv")
+        bad["true"] = bad["true"].iloc[::-1].to_numpy()
+        bad.to_csv(rep / "preds_dry_cnn_test.csv", index=False)
+        r = run(root, "error_analysis.py", "--run-name", "dry_cnn", "--split", "test")
+        check("misaligned predictions rejected",
+              r.returncode != 0 and "row orders do not match" in (r.stdout + r.stderr))
+
         # --- a drifted checkpoint is caught --------------------------------
         runs.loc[runs["run_name"] == "dry_cnn", "test_top1"] = 0.9999
         runs.to_csv(root / "reports" / "ablations.csv", index=False)
