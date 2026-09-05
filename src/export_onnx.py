@@ -43,6 +43,7 @@ Requires models/<run-name>.pt. Writes models/<run-name>.onnx.
 from __future__ import annotations
 
 import argparse
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -214,6 +215,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    # The exporter reports progress with characters Windows' default
+    # console encoding cannot represent. Encoding errors raise rather than
+    # degrade, so redirecting this script's output to a file, or capturing
+    # it from another process, crashes inside a print statement that was
+    # announcing success. Replacing unrepresentable characters keeps the
+    # script usable in both cases without changing what it does.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+
     args = parse_args()
     device = torch.device("cpu")
 
