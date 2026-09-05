@@ -30,6 +30,15 @@ Two settings here move the numbers, not just the file:
                 whole weight tensor. Filters in the same layer can differ
                 enough in magnitude that a shared scale wastes most of
                 the INT8 range on the largest of them.
+  conv_only     Quantize the convolutions and leave the classifier head
+                in floating point. Quantizing the head also quantizes the
+                model's output, which puts one score per class onto a
+                grid of 256 levels; with more classes than levels, exact
+                ties between classes become routine, and a tie means the
+                prediction is settled by whatever order the runtime
+                happens to use rather than by the model. The convolutions
+                hold most of the weights, so excluding the head costs
+                much less size than it sounds like it should.
 
 What each mode actually quantizes is printed rather than assumed. The
 operator histogram is the only honest answer to why a quantized file is
@@ -165,6 +174,8 @@ def read_provenance(path: Path) -> dict[str, str]:
 
 def output_name(run_name: str, args: argparse.Namespace) -> Path:
     parts = [run_name, "int8", args.mode]
+    if args.conv_only:
+        parts.append("conv_only")
     if args.mode == "static" and not args.per_channel:
         parts.append("per_tensor")
     if not args.reduce_range:
@@ -187,6 +198,11 @@ def parse_args() -> argparse.Namespace:
         help="one weight scale per tensor instead of one per convolution filter",
     )
     p.add_argument(
+        "--conv-only",
+        action="store_true",
+        help="quantize convolutions only, leaving the classifier head in floating point",
+    )
+    p.add_argument(
         "--full-range",
         dest="reduce_range",
         action="store_false",
@@ -207,11 +223,15 @@ def main() -> None:
     ex.check_self_contained(source)
 
     out_path = output_name(args.run_name, args)
+    # An empty list means every operator the mode supports.
+    op_types = ["Conv"] if args.conv_only else []
+
     provenance = {
         "source_model": source.name,
         "quantization_mode": args.mode,
         "per_channel": str(args.per_channel),
         "reduce_range": str(args.reduce_range),
+        "quantized_op_types": ", ".join(op_types) if op_types else "all supported",
     }
 
     # Shape inference and folding before quantization. The quantizer warns
@@ -228,6 +248,7 @@ def main() -> None:
                 weight_type=QuantType.QInt8,
                 per_channel=args.per_channel,
                 reduce_range=args.reduce_range,
+                op_types_to_quantize=op_types,
             )
         else:
             _, _, config = evaluate.load_checkpoint(args.run_name, torch.device("cpu"))
@@ -259,6 +280,7 @@ def main() -> None:
                 weight_type=QuantType.QInt8,
                 per_channel=args.per_channel,
                 reduce_range=args.reduce_range,
+                op_types_to_quantize=op_types,
             )
     finally:
         prepared.unlink(missing_ok=True)
