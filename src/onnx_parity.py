@@ -117,12 +117,23 @@ def torch_logits(run_name: str, x: np.ndarray, config: argparse.Namespace, batch
 def rank_and_probability(logits: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Top-K class indices, the true class's rank, and two probabilities.
 
-    Mirrors how the checkpoint's own scoring derives these, so that a
-    difference between the two files is a difference between the models
-    rather than between two ways of reading the same logits."""
-    order = np.argsort(-logits, axis=1, kind="stable")[:, :TOP_K]
-    true_logit = logits[np.arange(len(y)), y][:, None]
-    rank = (logits > true_logit).sum(axis=1) + 1
+    Rank is the true class's position in the same ordering the predicted
+    labels come from, rather than a count of strictly higher logits. The
+    two definitions agree exactly whenever no two classes score the same,
+    and quantization breaks that assumption: it rounds logits onto a
+    coarse grid, which produces exact ties. Counting strictly higher
+    logits scores a tie at the top as a correct prediction while the
+    predicted label goes to whichever tied class the ordering picks, so
+    the accuracy and the predictions in the same file end up disagreeing
+    with each other. Deriving both from one ordering makes that
+    impossible."""
+    ordering = np.argsort(-logits, axis=1, kind="stable")
+    position = np.empty_like(ordering)
+    np.put_along_axis(
+        position, ordering, np.broadcast_to(np.arange(logits.shape[1]), ordering.shape), axis=1
+    )
+    rank = position[np.arange(len(y)), y] + 1
+    order = ordering[:, :TOP_K]
 
     shifted = logits - logits.max(axis=1, keepdims=True)
     exponentiated = np.exp(shifted)
@@ -132,7 +143,11 @@ def rank_and_probability(logits: np.ndarray, y: np.ndarray) -> tuple[np.ndarray,
 
 
 def top_two_margin(logits: np.ndarray) -> np.ndarray:
-    """Gap between the highest and second-highest logit per sequence."""
+    """Gap between the highest and second-highest logit per sequence.
+
+    A gap of exactly zero is a tie, and a tie means the prediction is
+    decided by the ordering rule rather than by the model. Two runtimes
+    need not use the same rule."""
     partitioned = np.partition(logits, -2, axis=1)
     return partitioned[:, -1] - partitioned[:, -2]
 
@@ -256,6 +271,14 @@ def main() -> None:
         f"top-5: {top5:.4f} against {reference_top5:.4f} stored "
         f"({(top5 - reference_top5) * 100:+.2f}pp)"
     )
+
+    tied = int((top_two_margin(logits) == 0).sum())
+    if tied:
+        print(
+            f"Tied top-1 logits on {tied} of {len(y)} sequences ({tied / len(y):.2%}). On these the "
+            f"prediction is decided by the ordering rule, not by the model, and another runtime "
+            f"need not order them the same way."
+        )
 
     truth = reference["true"].to_numpy()
     predicted = np.array([labels[i] for i in order[:, 0]])
