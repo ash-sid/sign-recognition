@@ -12,3 +12,5 @@ models/*.onnx
 !models/v1_gru.pt
 !models/v1_cnn.pt
 !models/abl_hands_aug.pt
+!models/abl_hands_aug.onnx
+reports/preds_*_onnx_int8_*.csv

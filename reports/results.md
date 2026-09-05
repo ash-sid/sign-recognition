@@ -371,3 +371,63 @@ At 20 FPS the whole pipeline has 50 ms per frame. The model forward pass uses 1.
 Measured through PyTorch on the CPU. The browser will run a different runtime on different hardware, so treat this as a reference point for the model's cost, not as a prediction of what the demo will do.
 
 <!-- LATENCY_END -->
+
+<!-- EXPORT_START -->
+## Export and quantization
+
+`abl_hands_aug` exported to ONNX and quantized, scored on the test split (14015 sequences). Sizes are of the graph file, which carries its own weights. Timings are single-threaded on AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD: 300 calls at batch size 1 after 30 discarded, and 20 runtime constructions.
+
+| Variant | Size | Gzipped | Load | Inference (median) | Inference (p95) | Top-1 | Top-5 | Predictions changed | p |
+|---|---|---|---|---|---|---|---|---|---|
+| `fp32` | 1.59 MB | 1.46 MB | 1.7 ms | 0.27 ms | 0.28 ms | 61.03% | 82.59% | — | — |
+| `int8_dynamic` | 0.42 MB | 0.26 MB | 3.4 ms | 3.04 ms | 3.07 ms | 60.51% | 82.37% | 992 (7.08%) | 0.000436 |
+| `int8_dynamic_conv_only` | 0.61 MB | 0.44 MB | 2.9 ms | 3.02 ms | 3.11 ms | 60.51% | 82.34% | 973 (6.94%) | 0.000291 |
+| `int8_static` | 0.43 MB | 0.32 MB | 3.5 ms | 0.12 ms | 0.15 ms | 60.85% | 82.58% | 529 (3.77%) | 0.101 |
+| `int8_static_conv_only` | 0.62 MB | 0.50 MB | 3.6 ms | 0.13 ms | 0.14 ms | 60.79% | 82.61% | 528 (3.77%) | 0.0337 |
+
+Predictions changed counts how many of the 14015 individual top-1 predictions differ from the float32 export, and p is a paired exact test over the ones each variant gets right that the other does not. Two models can agree on accuracy while disagreeing about which sequences they recognise, so the count is reported alongside the accuracy rather than left to be inferred from it. Quantizing a fixed set of weights is deterministic, so these differences are exact and repeatable rather than estimates with run-to-run variation around them.
+
+At 20 FPS the pipeline has 50 ms per frame, and every variant here uses under 6% of it. Inference cost is not what separates these options and quantization is not being asked to buy speed; the columns that differ meaningfully are size and load time.
+
+Statically quantized variants were calibrated on 512 sequences drawn from the train split at seed 0. Calibrating on the split a model is scored on would fit the quantization to the evaluation and make every accuracy figure here a measurement of the wrong thing.
+
+<!-- EXPORT_END -->
+
+## Choosing what to deploy
+
+The demo runs the float32 export. Quantization was measured rather than assumed, and it lost.
+
+The float32 graph reproduces all 14,015 predictions the checkpoint makes on the same
+processor, exactly. Seven differ from the stored predictions, which were produced on a
+GPU — but the model itself differs on the same seven when run on a processor instead, so
+that is a difference between devices, not something the export introduced.
+
+Inference cost was never the reason to quantize. The float32 graph classifies one sequence
+in 0.27 ms single-threaded, half a percent of the 50 ms a frame gets at 20 FPS. Load time
+is not a factor either: 1.7 ms against 3.4 ms for the smallest quantized graph, both
+invisible beside the network fetch that precedes them.
+
+What INT8 offers is download size — 1.46 MB compressed against 0.32 MB. That saving is
+real but small next to a page that already downloads a WebAssembly runtime and two landmark
+models.
+
+What it costs is agreement. The best INT8 variant moves 3.77% of individual top-1
+predictions, one sequence in twenty-seven answered differently from the model every number
+here describes, for 0.18pp of accuracy. Aggregate accuracy hides this almost entirely,
+which is why the per-prediction count is reported beside it.
+
+That variant also produces exact ties. Quantizing the classifier head puts 250 class scores
+onto 256 levels, and 685 of the 14,015 test sequences end up with two classes scoring
+identically. On those the answer is settled by whatever order the runtime produces rather
+than by the model, and two runtimes need not agree. Excluding the head removes the ties and
+costs 0.19 MB, leaving a 0.96 MB saving and a slightly larger accuracy gap.
+
+Dynamic quantization is dominated outright. It is slower than float32, not faster — 3.04 ms
+against 0.27 ms — because it computes activation scales on every call, and this model is too
+small for that overhead to repay. It also moves twice as many predictions for a larger
+accuracy loss.
+
+One caveat on the INT8 figures: they were measured on a processor without VNNI instructions,
+with weights narrowed to seven bits to avoid saturation on that hardware. A machine that
+does not need that narrowing might see a smaller penalty. It would not change the decision,
+which rests on prediction churn and download size rather than on the 0.18pp.
