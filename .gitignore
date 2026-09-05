@@ -8,6 +8,7 @@ node_modules/
 web/dist/
 .ipynb_checkpoints/
 models/*.pt
+models/*.onnx
 !models/v1_gru.pt
 !models/v1_cnn.pt
 !models/abl_hands_aug.pt
