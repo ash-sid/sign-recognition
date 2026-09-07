@@ -4,8 +4,21 @@ This is the contract between the Python preprocessing/modelling side and
 the export/browser side. Both `src/preprocessing.py` and the eventual
 TypeScript port in `web/src/preprocessing.ts` must implement exactly this.
 **Do not change any of it silently** -- a change here means re-checking
-both implementations agree (a fixture-based parity test is planned once
-the browser port exists) and re-running anything downstream.
+that both implementations agree and re-running anything downstream.
+`web/tests/parity.test.ts` compares them case by case against a fixture
+built by `src/make_fixture.py`, at a tolerance of zero.
+
+## Where a port begins
+
+A sequence reaches the Python module as rows in a parquet file and has
+to be pivoted into an array first. In a browser it is assembled a frame
+at a time from a landmarker and there is no long format anywhere. That
+step is genuinely platform-specific and is not part of this contract.
+
+The contract starts at the array both platforms arrive at: `(T, 50, 3)`
+with `NaN` for anything not tracked, in the landmark order below.
+Everything from there -- missing values, normalization, resampling -- is
+specified here and must match exactly.
 
 ## Input tensor shape
 
