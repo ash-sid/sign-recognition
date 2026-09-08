@@ -1,0 +1,321 @@
+/*
+ * web/src/style.css
+ *
+ * The camera is the page. Everything else is instrumentation around it, set
+ * quietly so that the one large element -- the sign the model has settled on --
+ * is the only thing competing for attention.
+ */
+
+:root {
+  --ground: #e6e9ec;
+  --panel: #fbfcfc;
+  --ink: #16232b;
+  --muted: #5f7078;
+  --hairline: #c8d0d4;
+  --signal: #1f6f5c;
+  --caution: #a8641a;
+
+  --gap: 1.5rem;
+  --measure: 66ch;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: clamp(1.25rem, 4vw, 3rem);
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+
+main {
+  max-width: 76rem;
+  margin: 0 auto;
+  display: grid;
+  gap: var(--gap);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3.2vw, 2.1rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.standfirst {
+  margin: 0.35rem 0 0;
+  max-width: var(--measure);
+  color: var(--muted);
+}
+
+.masthead {
+  display: grid;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: var(--gap);
+}
+
+.status {
+  margin: 0;
+  justify-self: start;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.status[data-state="live"] {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.status[data-state="blocked"] {
+  border-color: var(--caution);
+  color: var(--caution);
+}
+
+.stage {
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: minmax(0, 3fr) minmax(15rem, 1fr);
+  align-items: start;
+}
+
+/* The video well ------------------------------------------------------- */
+
+.well {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #0d1417;
+  border: 1px solid var(--hairline);
+}
+
+.well video,
+.well canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* Shown as a mirror so a signer can watch themselves. What the classifier
+     receives is decided separately, by the control below the stage. */
+  transform: scaleX(-1);
+}
+
+.well video {
+  object-fit: cover;
+}
+
+.verdict {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 1.25rem 1.5rem 1.1rem;
+  background: linear-gradient(to top, rgba(13, 20, 23, 0.85), rgba(13, 20, 23, 0));
+  color: #f4f7f7;
+}
+
+.word {
+  margin: 0;
+  font-size: clamp(2.25rem, 6vw, 4rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.word[data-settled="false"] {
+  color: #9fb0b4;
+  font-weight: 400;
+}
+
+.confidence {
+  height: 2px;
+  margin: 0.7rem 0 0.45rem;
+  background: rgba(244, 247, 247, 0.25);
+}
+
+.confidence span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #7fd8bf;
+  transition: width 180ms ease-out;
+}
+
+.verdict-note {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #b9c6c9;
+}
+
+/* The readout ---------------------------------------------------------- */
+
+.readout {
+  display: grid;
+  gap: 1.5rem;
+  align-content: start;
+}
+
+.candidates {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.candidates li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.9375rem;
+}
+
+.candidates li:first-child {
+  color: var(--signal);
+  font-weight: 500;
+}
+
+.candidates .score {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.candidates li:first-child .score {
+  color: inherit;
+}
+
+.candidates .empty {
+  border: 0;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.telemetry {
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.telemetry div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 0.3rem;
+}
+
+.telemetry dt {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.telemetry dd {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.telemetry dd[data-poor="true"] {
+  color: var(--caution);
+}
+
+/* Controls ------------------------------------------------------------- */
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: var(--gap);
+  padding-top: var(--gap);
+  border-top: 1px solid var(--hairline);
+}
+
+.control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem 0.75rem;
+  align-items: center;
+}
+
+.control-name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.control input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: var(--signal);
+}
+
+.control-switch {
+  grid-template-columns: 1fr auto;
+}
+
+.control input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--signal);
+}
+
+.control output {
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.control-note {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+}
+
+footer {
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--gap);
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+footer p {
+  margin: 0;
+  max-width: var(--measure);
+}
+
+@media (max-width: 56rem) {
+  .stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confidence span {
+    transition: none;
+  }
+}

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign recognition</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header class="masthead">
+        <h1>Sign recognition</h1>
+        <p class="standfirst">
+          A convolutional network reading MediaPipe hand and shoulder landmarks, running in this
+          page. 250 signs, one at a time.
+        </p>
+        <p class="status" id="status" role="status">Starting up</p>
+      </header>
+
+      <section class="stage">
+        <div class="well" id="well">
+          <video id="video" playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div class="verdict">
+            <p class="word" id="word">&mdash;</p>
+            <div class="confidence"><span id="confidence-bar"></span></div>
+            <p class="verdict-note" id="verdict-note">Waiting for the camera</p>
+          </div>
+        </div>
+
+        <aside class="readout">
+          <h2>Closest signs</h2>
+          <ol class="candidates" id="candidates"></ol>
+
+          <h2>Live</h2>
+          <dl class="telemetry">
+            <div><dt>Frame rate</dt><dd id="fps">&mdash;</dd></div>
+            <div><dt>Landmarks</dt><dd id="landmark-ms">&mdash;</dd></div>
+            <div><dt>Classifier</dt><dd id="model-ms">&mdash;</dd></div>
+            <div><dt>Window</dt><dd id="window-fill">&mdash;</dd></div>
+            <div><dt>Hands tracked</dt><dd id="tracked">&mdash;</dd></div>
+          </dl>
+        </aside>
+      </section>
+
+      <section class="controls">
+        <label class="control">
+          <span class="control-name">Window length</span>
+          <input type="range" id="window-length" min="16" max="90" step="1" />
+          <output id="window-length-value"></output>
+          <span class="control-note">
+            Frames the classifier looks back over, stretched to the 70 it was trained on.
+          </span>
+        </label>
+
+        <label class="control">
+          <span class="control-name">Confidence to answer</span>
+          <input type="range" id="threshold" min="5" max="90" step="1" />
+          <output id="threshold-value"></output>
+          <span class="control-note">
+            Below this the demo shows the candidates without committing to one.
+          </span>
+        </label>
+
+        <label class="control control-switch">
+          <span class="control-name">Reflect before scoring</span>
+          <input type="checkbox" id="reflect" />
+          <span class="control-note">
+            The model does not answer identically for a signer and their reflection: it changes
+            about one prediction in twenty-two, at the same accuracy. The camera's own view is
+            scored by default. The picture above is flipped so you can sign to it, which is a
+            separate thing.
+          </span>
+        </label>
+      </section>
+
+      <footer>
+        <p>
+          Trained on 15 signers and tested on 3 it never saw, at 61.0% top-1 and 82.6% top-5 across
+          250 signs. Live accuracy will differ: the test signers all sign with the opposite hand to
+          the training majority, and about a third of test sequences lose more than half the frames
+          of the hand doing the work. Tracking quality is the largest single effect in the project,
+          which is why it is on the panel above.
+        </p>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
