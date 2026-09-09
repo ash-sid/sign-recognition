@@ -32,6 +32,7 @@ import {
   processSequence,
   trackedFraction,
 } from "./preprocessing";
+import { BurstTracker, frameMovement } from "./motion";
 import { HAND_BONES, createTrackers, trackFrame, type Trackers } from "./tracking";
 
 /**
@@ -53,6 +54,13 @@ const MIN_TRACKED = 0.5;
 
 /** Weight on the newest scores when smoothing. */
 const SMOOTHING = 0.35;
+
+/**
+ * How long a committed answer stays on screen after the movement that produced
+ * it stops. Long enough to read, short enough that it is obviously about the
+ * sign just made rather than a stale reading.
+ */
+const LATCH_MS = 2500;
 
 /** How many recent timings the medians on the panel are taken over. */
 const TIMING_HISTORY = 60;
@@ -82,6 +90,8 @@ const dom = {
 const state = {
   frames: new FrameWindow(DEFAULT_WINDOW),
   smoother: new Smoother(SMOOTHING),
+  burst: new BurstTracker(),
+  latchedAt: 0,
   threshold: DEFAULT_THRESHOLD,
   reflect: false,
   landmarkTimes: [] as number[],
@@ -219,25 +229,58 @@ async function step(trackers: Trackers, classifier: Classifier): Promise<void> {
     showNothing("Filling the window");
     return;
   }
-  if (handPresence < MIN_TRACKED) {
-    state.smoother.clear();
-    dom.candidates.replaceChildren(emptyRow("Nothing to rank yet"));
-    showNothing("Not enough of the hands is being tracked to call this");
-    return;
-  }
 
   let tensor = processSequence(recent, frameCount);
   if (state.reflect) tensor = mirrorSequence(tensor, TARGET_LEN);
 
-  const modelStart = performance.now();
-  const probabilities = await classifier.probabilities(tensor);
-  record(state.modelTimes, performance.now() - modelStart);
+  const handsPresent = handPresence >= MIN_TRACKED;
+  const movement = frameMovement(tensor, TARGET_LEN);
+  const wasActive = state.burst.active;
+  const scoring = state.burst.observe(movement, handsPresent);
 
-  const smoothed = state.smoother.update(probabilities);
-  const top = ranked(smoothed, classifier, CANDIDATES_SHOWN);
+  if (scoring) {
+    const modelStart = performance.now();
+    const probabilities = await classifier.probabilities(tensor);
+    record(state.modelTimes, performance.now() - modelStart);
+
+    const smoothed = state.smoother.update(probabilities);
+    state.burst.add(probabilities);
+    showCandidates(ranked(smoothed, classifier, CANDIDATES_SHOWN));
+    dom.word.textContent = "…";
+    dom.word.dataset.settled = "false";
+    dom.confidence.style.width = "0%";
+    dom.verdictNote.textContent = `Reading, ${state.burst.length} frames in`;
+    return;
+  }
+
+  // The burst just ended, either because the hands stopped or because they
+  // left the frame. Either way this is the moment its answer is worth having.
+  if (wasActive) {
+    state.smoother.clear();
+    const averaged = state.burst.take();
+    if (averaged) {
+      commit(ranked(averaged, classifier, CANDIDATES_SHOWN));
+      return;
+    }
+    showNothing("Too brief to read as a sign");
+    return;
+  }
+
+  if (performance.now() - state.latchedAt < LATCH_MS) return;
+
+  dom.confidence.style.width = "0%";
+  dom.word.textContent = "—";
+  dom.word.dataset.settled = "false";
+  dom.verdictNote.textContent = handsPresent
+    ? "Waiting for a sign"
+    : "Waiting for hands in the frame";
+}
+
+/** Show the answer a finished burst settled on, and keep it there a while. */
+function commit(top: { label: string; probability: number }[]): void {
   showCandidates(top);
-
   const best = top[0];
+  state.latchedAt = performance.now();
   dom.confidence.style.width = `${Math.min(best.probability * 100, 100)}%`;
   if (best.probability >= state.threshold) {
     dom.word.textContent = best.label;
