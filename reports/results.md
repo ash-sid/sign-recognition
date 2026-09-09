@@ -393,6 +393,35 @@ Statically quantized variants were calibrated on 512 sequences drawn from the tr
 
 <!-- EXPORT_END -->
 
+## In the browser
+
+Everything above is native: ONNX Runtime on a desktop processor, where the model was
+optimized and where every figure in the tables was measured. The demo runs that same
+float32 graph under `onnxruntime-web` on single-threaded WebAssembly, and pays for the
+runtime rather than for the model.
+
+| | Native | In the browser |
+|---|---|---|
+| Classifier, one sequence | 0.27 ms | ~1.5 ms |
+| Graph load | 1.7 ms | -- |
+| Preprocessing, one frame | -- | 0.65-0.9 ms |
+| Graph download | 1.46 MB gzipped | 1.46 MB gzipped |
+| Runtime download | -- | 3.65 MB gzipped (14.0 MB raw) |
+
+About five times the native cost, and still 3% of the 50 ms a frame gets at 20 FPS.
+Everything other than landmark extraction accounts for roughly 2.5 ms of that budget, so a
+frame rate short of target is the landmarkers and nothing else. The conclusion the native
+figure supported survives in the place it was meant to apply: the classifier is not the
+constraint.
+
+The download rows are the more useful comparison. The runtime a visitor fetches is two and
+a half times the size of the graph it runs, which is the context missing when the
+quantization decision below is read against native numbers alone.
+
+These are medians observed on one machine in one browser, not a controlled benchmark, and
+they do not share the native table's methodology. They are recorded to establish an order
+of magnitude rather than to be differenced against the figures above.
+
 ## Choosing what to deploy
 
 The demo runs the float32 export. Quantization was measured rather than assumed, and it lost.
@@ -403,13 +432,16 @@ GPU — but the model itself differs on the same seven when run on a processor i
 that is a difference between devices, not something the export introduced.
 
 Inference cost was never the reason to quantize. The float32 graph classifies one sequence
-in 0.27 ms single-threaded, half a percent of the 50 ms a frame gets at 20 FPS. Load time
+in 0.27 ms single-threaded, half a percent of the 50 ms a frame gets at 20 FPS. In the browser, where it
+actually runs, it takes about 1.5 ms and 3% of that budget: larger, and still not the
+constraint. Load time
 is not a factor either: 1.7 ms against 3.4 ms for the smallest quantized graph, both
 invisible beside the network fetch that precedes them.
 
 What INT8 offers is download size — 1.46 MB compressed against 0.32 MB. That saving is
 real but small next to a page that already downloads a WebAssembly runtime and two landmark
-models.
+models. Measured on the built site, the runtime alone is 3.65 MB gzipped against the
+graph's 1.46 MB.
 
 What it costs is agreement. The best INT8 variant moves 3.77% of individual top-1
 predictions, one sequence in twenty-seven answered differently from the model every number
