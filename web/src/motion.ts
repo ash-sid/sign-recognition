@@ -53,14 +53,24 @@ export const STILL_THRESHOLD = 0.01;
  * Frames a burst must last before its answer is worth committing. Counted in
  * frames actually scored, which is fewer than the frames a sign takes: scoring
  * only runs above the movement threshold.
- *
- * Two, because a brisk sign at thirty frames a second is over in six or seven
- * captured frames and only the ones above the movement threshold are scored.
- * The guard is here to keep a twitch from producing a confident answer, and
- * the confidence threshold already turns away weak ones, so there is little
- * left for a higher number to catch beyond real signs performed quickly.
  */
-export const MIN_BURST_FRAMES = 2;
+export const MIN_BURST_FRAMES = 3;
+
+/**
+ * Frames a burst stays open for once it starts, whatever movement does next.
+ *
+ * The two thresholds above have a gap between them so that a lull inside a
+ * sign does not chop it in two, but a gap cannot help when the burst is closed
+ * on the very next sample. A quick sign at thirty frames a second registers as
+ * a spike rather than a plateau: one frame above the upper threshold, the next
+ * already below the lower one. Without a floor that produces a one-frame
+ * burst, which is discarded as too short, so signing quickly fails while
+ * signing slowly works.
+ *
+ * Four frames is about an eighth of a second. Long enough to turn a spike into
+ * something scorable, short enough that it cannot swallow a second sign.
+ */
+export const MIN_BURST_DURATION = 4;
 
 export type Phase = "absent" | "still" | "moving";
 
@@ -113,6 +123,7 @@ export class BurstTracker {
   private frames = 0;
   private moving = false;
   private completed = 0;
+  private held = 0;
 
   /** True while a burst is in progress. */
   get active(): boolean {
@@ -139,12 +150,14 @@ export class BurstTracker {
   observe(movement: number, handsPresent: boolean): boolean {
     if (!handsPresent) return false;
     if (this.moving) {
-      if (movement < STILL_THRESHOLD) {
+      if (this.held > 0) this.held--;
+      if (this.held === 0 && movement < STILL_THRESHOLD) {
         this.moving = false;
         this.completed = this.frames;
       }
     } else if (movement >= MOVING_THRESHOLD) {
       this.moving = true;
+      this.held = MIN_BURST_DURATION;
       this.accumulated = undefined;
       this.frames = 0;
     }
@@ -171,6 +184,7 @@ export class BurstTracker {
     this.accumulated = undefined;
     this.frames = 0;
     this.moving = false;
+    this.held = 0;
     if (!accumulated || frames < MIN_BURST_FRAMES) return undefined;
     const out = new Float32Array(accumulated.length);
     for (let i = 0; i < accumulated.length; i++) out[i] = accumulated[i] / frames;
@@ -182,5 +196,6 @@ export class BurstTracker {
     this.frames = 0;
     this.moving = false;
     this.completed = 0;
+    this.held = 0;
   }
 }

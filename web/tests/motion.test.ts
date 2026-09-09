@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   BurstTracker,
+  MIN_BURST_DURATION,
   MIN_BURST_FRAMES,
   MOVING_THRESHOLD,
   STILL_THRESHOLD,
@@ -72,10 +73,27 @@ describe("BurstTracker", () => {
     expect(burst.active).toBe(true);
   });
 
-  it("ends once movement drops below the lower threshold", () => {
+  it("ends once movement drops below the lower threshold and the floor is past", () => {
     const burst = new BurstTracker();
     burst.observe(MOVING_THRESHOLD * 1.5, true);
+    for (let i = 0; i < MIN_BURST_DURATION; i++) burst.observe(STILL_THRESHOLD / 2, true);
     expect(burst.observe(STILL_THRESHOLD / 2, true)).toBe(false);
+  });
+
+  it("survives a single-frame spike, which is what a quick sign looks like", () => {
+    // One frame above the upper threshold and nothing after it. Without a
+    // minimum duration this closes immediately and yields a burst of one.
+    const burst = new BurstTracker();
+    burst.observe(MOVING_THRESHOLD * 5, true);
+    let scored = 0;
+    for (let i = 0; i < MIN_BURST_DURATION * 2; i++) {
+      if (burst.observe(0, true)) {
+        burst.add(Float32Array.from([1, 0]));
+        scored++;
+      }
+    }
+    expect(scored).toBeGreaterThanOrEqual(MIN_BURST_FRAMES);
+    expect(burst.take()).toBeDefined();
   });
 
   it("yields nothing for a burst too short to be a sign", () => {
