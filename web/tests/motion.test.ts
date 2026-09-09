@@ -98,12 +98,31 @@ describe("BurstTracker", () => {
     expect(Array.from(averaged!)).toEqual([0.5, 0.5]);
   });
 
-  it("clears itself once taken", () => {
+  it("stops scoring once taken but keeps the count readable", () => {
+    // The count outlives the burst on purpose: a burst is over in a fraction
+    // of a second, and a panel that resets to zero with it cannot be read.
     const burst = new BurstTracker();
     burst.observe(MOVING_THRESHOLD * 1.5, true);
     for (let i = 0; i < MIN_BURST_FRAMES; i++) burst.add(Float32Array.from([1, 0]));
     burst.take();
     expect(burst.active).toBe(false);
+    expect(burst.length).toBe(MIN_BURST_FRAMES);
+  });
+
+  it("reports how short a burst was even when it was too short to answer", () => {
+    const burst = new BurstTracker();
+    burst.observe(MOVING_THRESHOLD * 1.5, true);
+    burst.add(Float32Array.from([1, 0]));
+    expect(burst.take()).toBeUndefined();
+    expect(burst.length).toBe(1);
+  });
+
+  it("goes back to nothing when cleared", () => {
+    const burst = new BurstTracker();
+    burst.observe(MOVING_THRESHOLD * 1.5, true);
+    for (let i = 0; i < MIN_BURST_FRAMES; i++) burst.add(Float32Array.from([1, 0]));
+    burst.take();
+    burst.clear();
     expect(burst.length).toBe(0);
   });
 });

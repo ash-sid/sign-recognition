@@ -202,9 +202,12 @@ function updateTelemetry(tracked: number, movement = 0): void {
   dom.tracked.dataset.poor = String(tracked < MIN_TRACKED);
   dom.movement.textContent = movement.toFixed(3);
   dom.movement.dataset.poor = String(movement < STILL_THRESHOLD);
+  const scored = state.burst.length;
   dom.burst.textContent = state.burst.active
-    ? `${state.burst.length} frames scored`
-    : "not moving";
+    ? `${scored} frames, reading`
+    : scored > 0
+      ? `${scored} frames, last sign`
+      : "not moving";
 }
 
 async function step(trackers: Trackers, classifier: Classifier): Promise<void> {

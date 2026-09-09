@@ -53,8 +53,14 @@ export const STILL_THRESHOLD = 0.01;
  * Frames a burst must last before its answer is worth committing. Counted in
  * frames actually scored, which is fewer than the frames a sign takes: scoring
  * only runs above the movement threshold.
+ *
+ * Two, because a brisk sign at thirty frames a second is over in six or seven
+ * captured frames and only the ones above the movement threshold are scored.
+ * The guard is here to keep a twitch from producing a confident answer, and
+ * the confidence threshold already turns away weak ones, so there is little
+ * left for a higher number to catch beyond real signs performed quickly.
  */
-export const MIN_BURST_FRAMES = 3;
+export const MIN_BURST_FRAMES = 2;
 
 export type Phase = "absent" | "still" | "moving";
 
@@ -106,14 +112,24 @@ export class BurstTracker {
   private accumulated: Float32Array | undefined;
   private frames = 0;
   private moving = false;
+  private completed = 0;
 
   /** True while a burst is in progress. */
   get active(): boolean {
     return this.moving;
   }
 
+  /**
+   * Frames scored: the running count during a burst, and the count the last
+   * one finished with afterwards.
+   *
+   * A burst lasts a fraction of a second, so a panel showing only the live
+   * count reads "not moving" by the time anyone looks at it -- which made the
+   * one number deciding whether an answer appears the one number nobody could
+   * read.
+   */
   get length(): number {
-    return this.frames;
+    return this.moving ? this.frames : this.completed;
   }
 
   /**
@@ -123,7 +139,10 @@ export class BurstTracker {
   observe(movement: number, handsPresent: boolean): boolean {
     if (!handsPresent) return false;
     if (this.moving) {
-      if (movement < STILL_THRESHOLD) this.moving = false;
+      if (movement < STILL_THRESHOLD) {
+        this.moving = false;
+        this.completed = this.frames;
+      }
     } else if (movement >= MOVING_THRESHOLD) {
       this.moving = true;
       this.accumulated = undefined;
@@ -142,11 +161,13 @@ export class BurstTracker {
 
   /**
    * The burst's averaged scores, or undefined if it was too short to trust.
-   * Clears the accumulator either way.
+   * Clears the accumulator either way, but keeps the frame count so the panel
+   * can still say how short "too short" was.
    */
   take(): Float32Array | undefined {
     const accumulated = this.accumulated;
     const frames = this.frames;
+    if (frames > 0) this.completed = frames;
     this.accumulated = undefined;
     this.frames = 0;
     this.moving = false;
@@ -160,5 +181,6 @@ export class BurstTracker {
     this.accumulated = undefined;
     this.frames = 0;
     this.moving = false;
+    this.completed = 0;
   }
 }
