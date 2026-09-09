@@ -88,7 +88,9 @@ describe("BurstTracker", () => {
   it("averages the scores it saw across a long enough burst", () => {
     const burst = new BurstTracker();
     burst.observe(MOVING_THRESHOLD * 1.5, true);
-    for (let i = 0; i < MIN_BURST_FRAMES; i++) {
+    // An even count, so an exact half-and-half average is the right answer
+    // whatever the minimum happens to be set to.
+    for (let i = 0; i < 2 * MIN_BURST_FRAMES; i++) {
       burst.add(Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1]));
     }
     const averaged = burst.take();

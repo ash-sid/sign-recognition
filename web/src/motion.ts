@@ -32,21 +32,29 @@
 import { HAND_LANDMARKS, LEFT_HAND_START, NUM_COORDS, RIGHT_HAND_START, at } from "./preprocessing";
 
 /**
- * Mean per-landmark movement between frames, in shoulder-widths, above which
- * the hands count as moving. Measured on normalized coordinates so it does not
- * depend on how close the signer stands.
+ * Mean per-landmark movement between one captured frame and the next, in
+ * shoulder-widths, above which the hands count as moving. Measured on
+ * normalized coordinates so it does not depend on how close the signer stands.
+ *
+ * These two numbers are read off the panel, not derived from anything. Both
+ * are shown live so a signer whose bursts never start, or never end, can see
+ * which one is wrong instead of guessing.
  */
-export const MOVING_THRESHOLD = 0.06;
+export const MOVING_THRESHOLD = 0.02;
 
 /**
  * The threshold movement has to fall back below to end a burst. Set lower than
  * the one that starts it so that a moment of near-stillness inside a sign does
  * not chop it into two.
  */
-export const STILL_THRESHOLD = 0.03;
+export const STILL_THRESHOLD = 0.01;
 
-/** Frames a burst must last before its answer is worth committing. */
-export const MIN_BURST_FRAMES = 6;
+/**
+ * Frames a burst must last before its answer is worth committing. Counted in
+ * frames actually scored, which is fewer than the frames a sign takes: scoring
+ * only runs above the movement threshold.
+ */
+export const MIN_BURST_FRAMES = 3;
 
 export type Phase = "absent" | "still" | "moving";
 
@@ -58,8 +66,14 @@ export type Phase = "absent" | "still" | "moving";
  * shoulder-relative and already has absent hands zeroed. Landmarks that are
  * exactly zero are skipped: a hand that appears or disappears between frames
  * would otherwise register as a whole-hand jump and read as motion.
+ *
+ * The tensor is resampled, so its frames are not captured frames: a 48-frame
+ * window stretched to 70 spreads the same movement over half again as many
+ * steps, and a threshold set against one window length would mean something
+ * different at another. `scale` rescales the result back to movement per
+ * captured frame, which is the quantity the thresholds are about.
  */
-export function frameMovement(tensor: Float32Array, frameCount: number): number {
+export function frameMovement(tensor: Float32Array, frameCount: number, scale = 1): number {
   if (frameCount < 2) return 0;
   const previous = frameCount - 2;
   const current = frameCount - 1;
@@ -81,7 +95,7 @@ export function frameMovement(tensor: Float32Array, frameCount: number): number 
       counted++;
     }
   }
-  return counted > 0 ? total / counted : 0;
+  return counted > 0 ? (total / counted) * scale : 0;
 }
 
 /**

@@ -32,7 +32,7 @@ import {
   processSequence,
   trackedFraction,
 } from "./preprocessing";
-import { BurstTracker, frameMovement } from "./motion";
+import { BurstTracker, STILL_THRESHOLD, frameMovement } from "./motion";
 import { HAND_BONES, createTrackers, trackFrame, type Trackers } from "./tracking";
 
 /**
@@ -80,6 +80,8 @@ const dom = {
   modelMs: document.getElementById("model-ms") as HTMLElement,
   windowFill: document.getElementById("window-fill") as HTMLElement,
   tracked: document.getElementById("tracked") as HTMLElement,
+  movement: document.getElementById("movement") as HTMLElement,
+  burst: document.getElementById("burst") as HTMLElement,
   windowLength: document.getElementById("window-length") as HTMLInputElement,
   windowLengthValue: document.getElementById("window-length-value") as HTMLOutputElement,
   threshold: document.getElementById("threshold") as HTMLInputElement,
@@ -188,7 +190,7 @@ function showNothing(note: string): void {
   dom.verdictNote.textContent = note;
 }
 
-function updateTelemetry(tracked: number): void {
+function updateTelemetry(tracked: number, movement = 0): void {
   const frameTime = median(state.frameTimes);
   dom.fps.textContent = frameTime > 0 ? `${(1000 / frameTime).toFixed(0)} per second` : "—";
   dom.landmarkMs.textContent = `${median(state.landmarkTimes).toFixed(1)} ms`;
@@ -198,6 +200,11 @@ function updateTelemetry(tracked: number): void {
   dom.windowFill.textContent = `${state.frames.filled} of ${state.frames.capacity} frames`;
   dom.tracked.textContent = `${(tracked * 100).toFixed(0)}% of the window`;
   dom.tracked.dataset.poor = String(tracked < MIN_TRACKED);
+  dom.movement.textContent = movement.toFixed(3);
+  dom.movement.dataset.poor = String(movement < STILL_THRESHOLD);
+  dom.burst.textContent = state.burst.active
+    ? `${state.burst.length} frames scored`
+    : "not moving";
 }
 
 async function step(trackers: Trackers, classifier: Classifier): Promise<void> {
@@ -223,9 +230,8 @@ async function step(trackers: Trackers, classifier: Classifier): Promise<void> {
     trackedFraction(recent, frameCount, LEFT_HAND_START),
     trackedFraction(recent, frameCount, RIGHT_HAND_START),
   );
-  updateTelemetry(handPresence);
-
   if (!state.frames.full) {
+    updateTelemetry(handPresence);
     showNothing("Filling the window");
     return;
   }
@@ -234,9 +240,13 @@ async function step(trackers: Trackers, classifier: Classifier): Promise<void> {
   if (state.reflect) tensor = mirrorSequence(tensor, TARGET_LEN);
 
   const handsPresent = handPresence >= MIN_TRACKED;
-  const movement = frameMovement(tensor, TARGET_LEN);
+  // Rescale to movement per captured frame: the tensor's 70 frames were
+  // stretched from however many the window holds.
+  const movement = frameMovement(tensor, TARGET_LEN, frameCount / TARGET_LEN);
   const wasActive = state.burst.active;
   const scoring = state.burst.observe(movement, handsPresent);
+  // After observe, so the panel reports the burst state this frame produced.
+  updateTelemetry(handPresence, movement);
 
   if (scoring) {
     const modelStart = performance.now();
@@ -262,6 +272,9 @@ async function step(trackers: Trackers, classifier: Classifier): Promise<void> {
       commit(ranked(averaged, classifier, CANDIDATES_SHOWN));
       return;
     }
+    // Latched like any other answer. Falling through to the waiting state on
+    // the next frame would make this unreadable, which is how it went unnoticed.
+    state.latchedAt = performance.now();
     showNothing("Too brief to read as a sign");
     return;
   }
