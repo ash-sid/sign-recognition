@@ -1,0 +1,62 @@
+name: Deploy the web app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Publishing needs to upload a Pages artifact and mint an identity token for the
+# deploy step. Nothing here writes back to the repository.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A newer push supersedes one still queued, but a run already publishing is left
+# to finish rather than cancelled part way through replacing the live site.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # ci rather than install: the published site is built from the locked
+      # versions, including the runtime whose numbers the reports quote.
+      - run: npm ci
+
+      - run: npx tsc --noEmit
+
+      - run: npm test
+
+      # The app reads the graph and the label list from models/, one directory
+      # above web/, so this has to build against a full checkout rather than
+      # against web/ on its own.
+      - run: npm run build
+
+      # Path is relative to the workspace, not to the working directory above.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
