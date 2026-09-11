@@ -51,6 +51,33 @@
         </aside>
       </section>
 
+      <section class="suggestions">
+        <h2>Signs to try</h2>
+        <ul class="sign-list">
+          <li><span class="sign-name">brown</span><span class="sign-score">93%</span></li>
+          <li><span class="sign-name">french fries</span><span class="sign-score">91%</span></li>
+          <li><span class="sign-name">cow</span><span class="sign-score">89%</span></li>
+          <li><span class="sign-name">airplane</span><span class="sign-score">88%</span></li>
+          <li><span class="sign-name">call on phone</span><span class="sign-score">87%</span></li>
+          <li><span class="sign-name">hello</span><span class="sign-score">68%</span></li>
+          <li><span class="sign-name">drink</span><span class="sign-score">64%</span></li>
+          <li><span class="sign-name">blue</span><span class="sign-score">63%</span></li>
+        </ul>
+        <p class="sign-note">
+          Eight of the 250 the model knows, picked because each has a large distinct trajectory
+          rather than a handshape held in one place. The figure is how often that sign was read
+          correctly on signers the model never trained on, so the last three are expected to miss
+          sometimes -- when they do, the answer is usually still in the closest signs above.
+        </p>
+        <p class="sign-note">
+          Sign square to the camera with your hands around shoulder height. Distance and position
+          are normalized away; the angle of your shoulders is not, and height is measured against
+          them rather than against your head. Signs needing both hands are recognised poorly:
+          the non-dominant hand was rarely tracked in the training data, so the model barely saw
+          one.
+        </p>
+      </section>
+
       <section class="controls">
         <label class="control">
           <span class="control-name">Window length</span>

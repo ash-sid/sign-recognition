@@ -296,6 +296,49 @@ input:focus-visible {
   outline-offset: 3px;
 }
 
+.suggestions {
+  padding-top: var(--gap);
+  border-top: 1px solid var(--hairline);
+}
+
+.sign-list {
+  list-style: none;
+  margin: 0 0 0.9rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.4rem;
+}
+
+.sign-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  font-size: 0.9375rem;
+}
+
+.sign-name {
+  font-weight: 500;
+}
+
+/* The score sits beside the name rather than in a note underneath, so a sign
+   that misses reads as expected behaviour instead of a fault. */
+.sign-score {
+  color: var(--muted);
+}
+
+.sign-note {
+  margin: 0 0 0.6rem;
+  max-width: var(--measure);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
 footer {
   border-top: 1px solid var(--hairline);
   padding-top: var(--gap);
