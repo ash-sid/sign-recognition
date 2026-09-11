@@ -6,6 +6,8 @@ temporal convolutional network, exported to ONNX and running live in the browser
 **[Try the live demo](https://ash-sid.github.io/sign-recognition/)** -- everything runs on
 your machine; no video leaves the page.
 
+![The demo recognising eight signs from a webcam](docs/demo.gif)
+
 **This is not translation.** It recognises individual signs in isolation. Grammar, spatial
 referencing and non-manual markers are out of scope, which is why face landmarks are
 excluded from the model input by design rather than by oversight.
@@ -13,6 +15,19 @@ excluded from the model input by design rather than by oversight.
 Two deliverables of equal weight: a model with a real evaluation, and a demo that runs.
 
 ## Getting a good result from the demo
+
+These eight are a fair sample of the 250, chosen because each has a large distinct
+trajectory rather than a handshape held in one place. The figure is how often that sign was
+read correctly on signers the model never trained on:
+
+| | | | |
+|---|---|---|---|
+| `brown` 93% | `french fries` 91% | `cow` 89% | `airplane` 88% |
+| `call on phone` 87% | `hello` 68% | `drink` 64% | `blue` 63% |
+
+The last three miss regularly, and that is why they are on the list -- when they do, the
+correct answer is usually still among the closest signs on the panel. A list of only the
+reliable ones would advertise a model that does not exist.
 
 The model learned each sign as its 21 signers performed it, and it is worth knowing where
 that leaves it before you try:
@@ -24,6 +39,8 @@ that leaves it before you try:
   hand position relative to the shoulder line, so the learned range is narrow and literal.
 - **Signs with a large, distinct trajectory work best.** Signs separated by fine handshape
   at a similar location usually land in the top five rather than first.
+- **Sign with one hand.** Two-handed signs are recognised poorly, for a reason in the data
+  rather than in the model: only 1.19% of test sequences have both hands tracked at all.
 - **Watch the tracking readout.** The demo declines to answer below 50% hand presence
   across the window. Tracking quality is worth more than any modelling decision measured
   here, so a confident answer over a badly tracked window would be the most misleading
@@ -145,7 +162,24 @@ centres on and the width it scales by, moving the whole normalized frame underne
 sign. All 21 signers were recorded facing the camera at consistent framing, so this is
 variance the evaluation could not contain.
 
-None of these are visible in an accuracy number, and all three change what the project can
+**Two-handed signs are unreachable, and the offline evaluation had already written down
+why.** `finish` is read correctly on 53 of its 63 held-out test sequences, yet more than
+forty live attempts never once put it in the top five. What came back was `mitten` almost
+every time and `tree` occasionally -- which is precisely the model's own error distribution
+for `finish`. Across its ten test errors, `tree` appears at 72 times its base rate as an
+answer and `mitten` at 20 times, while the two otherwise share a top-5 only 4% of the time.
+A different signer on different hardware reproduced the model's error basin without ever
+reaching the sign. The cause is in the data: only 1.19% of test sequences have both hands
+tracked, so a sign performed with two hands is an input the model has almost no training
+for.
+
+That last one is the useful one. The other three are places the offline evaluation was
+structurally blind. This one it had already measured: the per-class confusion structure,
+reported as a distribution precisely because ranked worst-N tables rank sampling noise,
+turned out to predict which signs a live signer cannot reach and where the attempts land
+instead. Nobody read it that way until a camera was pointed at the model.
+
+None of these are visible in an accuracy number, and all four change what the project can
 honestly claim.
 
 ## Deployment
@@ -244,6 +278,9 @@ npm run dev
   a pipeline that consumes pre-extracted landmarks.
 - **Orientation is not normalized away**, and neither is sign height relative to the head.
   Both were found live, not offline.
+- **Two-handed signs are effectively out of reach.** 97.4% of sequences are one-handed and
+  no sign exceeds 12% two-handed, so the label records what the extraction pipeline tracked
+  rather than how the sign is performed. There is no contrast in the data to learn from.
 - **Mirroring changes 4.6% of individual predictions** at the same accuracy, so a mirrored
   camera feed disagrees with an unmirrored one about one sequence in twenty-two. The demo
   scores the camera's own view and exposes the choice as a control.
