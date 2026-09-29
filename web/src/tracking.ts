@@ -93,7 +93,8 @@ function squaredDistance(a: NormalizedLandmark, b: NormalizedLandmark): number {
 }
 
 /**
- * Decide which slot each detected hand belongs in.
+ * Decide which slot each detected hand belongs in. Ported to src/tracking.py
+ * for the offline extractor; both are held to web/tests/fixtures/slots.json.
  *
  * With at most two hands there are only two assignments to compare, so the
  * cheapest total distance is found by evaluating both rather than by matching
@@ -101,7 +102,7 @@ function squaredDistance(a: NormalizedLandmark, b: NormalizedLandmark): number {
  * slot whenever one is closer to the other's wrist, which happens whenever the
  * signer crosses their arms.
  */
-function assignSlots(
+export function assignSlots(
   hands: NormalizedLandmark[][],
   poseLandmarks: NormalizedLandmark[] | undefined,
   handedness: string[],
