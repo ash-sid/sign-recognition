@@ -14,3 +14,4 @@ models/*.onnx
 !models/abl_hands_aug.pt
 !models/abl_hands_aug.onnx
 reports/preds_*_onnx_int8_*.csv
+reports/sign_*.gif
