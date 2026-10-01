@@ -1,0 +1,25 @@
+{
+  "config": {
+    "hand_model_sha256": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",
+    "pose_model_sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a",
+    "mediapipe_version": "1.0.1",
+    "delegate": "CPU",
+    "num_hands": 2,
+    "num_poses": 1,
+    "max_width": null,
+    "frames": true,
+    "frames_fps": 30.0,
+    "output_layout": 2
+  },
+  "runs": [
+    {
+      "started": "2026-09-30T23:30:03",
+      "seconds": 18.4,
+      "extractor_sha256": "c662661b36e8b99e7a66feeff905af17fafa0aade94a7407c578e2f1315d456e",
+      "tasks_vision_version": "1.0.1",
+      "inputs": 3,
+      "extracted": 3,
+      "failed": []
+    }
+  ]
+}
