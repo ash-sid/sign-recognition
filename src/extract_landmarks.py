@@ -26,10 +26,19 @@ a whole sequence and not something an extractor can know.
     handedness   (T, 2)     int8      label the landmarker reported for the
                                       hand placed in each slot: 0 Left,
                                       1 Right, -1 no hand
+    handedness_score (T, 2) float32   that label's score, NaN for no hand
+    detection_index  (T, 2) int8      position of the slot's hand in the
+                                      landmarker's output, -1 for no hand
     timestamps   (T,)       int64     milliseconds passed to the landmarkers
     fps          ()         float64
     size         (2,)       int64     width, height of the image landmarked
     pixel_sha256 (T,)       str       frame sequences only; see --frames
+
+Hands are placed in slots by src/tracking.py, but everything the slot rule
+consumed is stored beside the result: the full pose, and each hand's reported
+handedness, score and detection order. Any other slot rule can therefore be
+applied to a finished cache offline, exactly as if it had run during
+extraction, without decoding a single video again.
 
 Timestamps are round(i * 1000 / fps) for frame i. Video mode in both
 landmarkers carries tracking state and smoothing from one frame to the next,
@@ -85,6 +94,10 @@ NUM_POSES = 1
 
 HANDEDNESS_CODE = {"Left": 0, "Right": 1}
 
+# Incremented whenever the set of arrays written changes, so that a directory
+# of outputs in one layout is never extended with files in another.
+OUTPUT_LAYOUT = 2
+
 
 @dataclass(frozen=True)
 class Config:
@@ -100,6 +113,7 @@ class Config:
     max_width: int | None
     frames: bool
     frames_fps: float | None
+    output_layout: int = OUTPUT_LAYOUT
 
 
 # --- inputs -------------------------------------------------------------------
@@ -213,7 +227,7 @@ def landmark_sequence(frames, config: Config, hand_model: str, pose_model: str) 
     """Landmark every frame of one input with a fresh pair of landmarkers."""
     fps = next(frames)
     mp, hand_landmarker, pose_landmarker = _landmarkers(config, hand_model, pose_model)
-    hands_out, pose_out, handed_out, stamps, hashes = [], [], [], [], []
+    hands_out, pose_out, handed_out, scores_out, order_out, stamps, hashes = [], [], [], [], [], [], []
     size = None
     try:
         for i, rgb in enumerate(frames):
@@ -241,17 +255,25 @@ def landmark_sequence(frames, config: Config, hand_model: str, pose_model: str) 
 
             detected = [_as_array(h) for h in hand_result.hand_landmarks]
             labels = [c[0].category_name if c else "" for c in hand_result.handedness]
+            label_scores = [c[0].score if c else np.nan for c in hand_result.handedness]
             slots = tracking.assign_slots(detected, pose_landmarks, labels)
 
             hand_frame = np.full((tracking.HANDS_END, 3), np.nan, dtype=np.float32)
             handed = np.full(2, -1, dtype=np.int8)
-            for hand, label, slot in zip(detected, labels, slots):
+            scores = np.full(2, np.nan, dtype=np.float32)
+            order = np.full(2, -1, dtype=np.int8)
+            for index, (hand, label, score, slot) in enumerate(zip(detected, labels, label_scores, slots)):
                 hand_frame[slot : slot + tracking.HAND_LANDMARKS] = hand
-                handed[0 if slot == tracking.LEFT_HAND_START else 1] = HANDEDNESS_CODE.get(label, -1)
+                column = 0 if slot == tracking.LEFT_HAND_START else 1
+                handed[column] = HANDEDNESS_CODE.get(label, -1)
+                scores[column] = score
+                order[column] = index
 
             hands_out.append(hand_frame)
             pose_out.append(pose_frame)
             handed_out.append(handed)
+            scores_out.append(scores)
+            order_out.append(order)
             stamps.append(timestamp)
     finally:
         hand_landmarker.close()
@@ -263,6 +285,8 @@ def landmark_sequence(frames, config: Config, hand_model: str, pose_model: str) 
         "hands": np.stack(hands_out),
         "pose": np.stack(pose_out),
         "handedness": np.stack(handed_out),
+        "handedness_score": np.stack(scores_out),
+        "detection_index": np.stack(order_out),
         "timestamps": np.asarray(stamps, dtype=np.int64),
         "fps": np.float64(fps),
         "size": np.asarray(size, dtype=np.int64),

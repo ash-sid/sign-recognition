@@ -118,19 +118,24 @@ def main() -> None:
         with np.load(out / "a" / "001.npz", allow_pickle=False) as data:
             arrays = {k: data[k] for k in data.files}
         check("documented keys, and no pixel hashes for video",
-              set(arrays) == {"hands", "pose", "handedness", "timestamps", "fps", "size"}, str(set(arrays)))
+              set(arrays) == {"hands", "pose", "handedness", "handedness_score", "detection_index",
+                              "timestamps", "fps", "size"}, str(set(arrays)))
         t = arrays["timestamps"].shape[0]
         check("one output frame per decoded frame", t == FRAMES, f"{t} frames")
         check("shapes and dtypes",
               arrays["hands"].shape == (t, 42, 3) and arrays["hands"].dtype == np.float32
               and arrays["pose"].shape == (t, 33, 3) and arrays["pose"].dtype == np.float32
-              and arrays["handedness"].shape == (t, 2) and arrays["handedness"].dtype == np.int8)
+              and arrays["handedness"].shape == (t, 2) and arrays["handedness"].dtype == np.int8
+              and arrays["handedness_score"].shape == (t, 2) and arrays["handedness_score"].dtype == np.float32
+              and arrays["detection_index"].shape == (t, 2) and arrays["detection_index"].dtype == np.int8)
         expected = np.array([round(i * 1000 / float(arrays["fps"])) for i in range(t)])
         check("timestamps are round(i * 1000 / fps)", np.array_equal(arrays["timestamps"], expected))
         check("size is width, height", tuple(arrays["size"]) == (320, 240), str(arrays["size"]))
         check("undetected hands are NaN, not zero",
               np.isnan(arrays["hands"]).all() and not (arrays["hands"] == 0).any())
-        check("no hand means handedness -1", (arrays["handedness"] == -1).all())
+        check("no hand means handedness -1, score NaN, detection index -1",
+              (arrays["handedness"] == -1).all() and np.isnan(arrays["handedness_score"]).all()
+              and (arrays["detection_index"] == -1).all())
 
         # --- resume, failure isolation, atomicity -------------------------------
         before = {p: p.stat().st_mtime_ns for p in out.rglob("*.npz")}
