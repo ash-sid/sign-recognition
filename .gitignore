@@ -18,3 +18,4 @@ reports/sign_*.gif
 models/landmarkers/
 data/landmarks/
 extract.log
+data/seam/

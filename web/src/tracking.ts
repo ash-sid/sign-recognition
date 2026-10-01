@@ -25,6 +25,7 @@ import {
   FilesetResolver,
   HandLandmarker,
   PoseLandmarker,
+  type ImageSource,
   type NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 
@@ -38,7 +39,7 @@ import {
 } from "./preprocessing";
 
 /** Pinned so a rebuild months from now loads what was measured. */
-const TASKS_VERSION = "1.0.1";
+export const TASKS_VERSION = "1.0.1";
 const WASM_ROOT = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_VERSION}/wasm`;
 const HAND_MODEL =
   "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
@@ -67,18 +68,34 @@ export interface TrackedFrame {
   leftHandSeen: boolean;
   rightHandSeen: boolean;
   poseSeen: boolean;
+  /** What the landmarkers returned before any slot was chosen. */
+  detections: Detections;
 }
 
-export async function createTrackers(): Promise<Trackers> {
+export interface Detections {
+  /** Hands in the order the landmarker reported them. */
+  hands: NormalizedLandmark[][];
+  /** The landmarker's top handedness label and its score, per hand. */
+  handedness: { label: string; score: number }[];
+  /** All 33 pose landmarks, or undefined when no pose was found. */
+  pose: NormalizedLandmark[] | undefined;
+}
+
+/**
+ * The live page runs on the GPU. The processor delegate exists so that
+ * landmarks can be compared with the offline extractor, which has no GPU
+ * delegate on Windows, with and without the delegate difference included.
+ */
+export async function createTrackers(delegate: "GPU" | "CPU" = "GPU"): Promise<Trackers> {
   const fileset = await FilesetResolver.forVisionTasks(WASM_ROOT);
   const [hands, pose] = await Promise.all([
     HandLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: HAND_MODEL, delegate: "GPU" },
+      baseOptions: { modelAssetPath: HAND_MODEL, delegate },
       runningMode: "VIDEO",
       numHands: 2,
     }),
     PoseLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: POSE_MODEL, delegate: "GPU" },
+      baseOptions: { modelAssetPath: POSE_MODEL, delegate },
       runningMode: "VIDEO",
       numPoses: 1,
     }),
@@ -152,12 +169,12 @@ function writeLandmark(frame: Float64Array, position: number, landmark: Normaliz
  */
 export function trackFrame(
   trackers: Trackers,
-  video: HTMLVideoElement,
+  source: ImageSource,
   timestamp: number,
 ): TrackedFrame {
   const frame = blankFrame();
-  const poseResult = trackers.pose.detectForVideo(video, timestamp);
-  const handResult = trackers.hands.detectForVideo(video, timestamp);
+  const poseResult = trackers.pose.detectForVideo(source, timestamp);
+  const handResult = trackers.hands.detectForVideo(source, timestamp);
 
   const poseLandmarks = poseResult.landmarks[0];
   if (poseLandmarks) {
@@ -167,7 +184,11 @@ export function trackFrame(
     });
   }
 
-  const handedness = handResult.handedness.map((categories) => categories[0]?.categoryName ?? "");
+  const reported = handResult.handedness.map((categories) => ({
+    label: categories[0]?.categoryName ?? "",
+    score: categories[0]?.score ?? Number.NaN,
+  }));
+  const handedness = reported.map((category) => category.label);
   const slots = assignSlots(handResult.landmarks, poseLandmarks, handedness);
 
   let leftHandSeen = false;
@@ -182,7 +203,13 @@ export function trackFrame(
     else rightHandSeen = true;
   });
 
-  return { frame, leftHandSeen, rightHandSeen, poseSeen: Boolean(poseLandmarks) };
+  return {
+    frame,
+    leftHandSeen,
+    rightHandSeen,
+    poseSeen: Boolean(poseLandmarks),
+    detections: { hands: handResult.landmarks, handedness: reported, pose: poseLandmarks },
+  };
 }
 
 /** Hand landmark pairs, for drawing a skeleton over the video. */
