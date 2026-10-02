@@ -1,0 +1,997 @@
+{
+ "description": "Hand-written sequence slot-assignment cases shared by web/tests/sequenceSlots.test.ts and tests/test_sequence_slots.py. A hand given as [x, y] stands for 21 landmarks all at that point; only the wrist and the mean landmark distance are read. Expected slots are written by hand.",
+ "cases": [
+  {
+   "name": "empty sequence",
+   "aspect": 1.0,
+   "frames": [],
+   "expected": []
+  },
+  {
+   "name": "frames without hands",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    }
+   ],
+   "expected": [
+    [],
+    []
+   ]
+  },
+  {
+   "name": "one steady hand outvotes a frame with misplaced pose wrists",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.6,
+       0.5
+      ],
+      "right": [
+       0.3,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    }
+   ],
+   "expected": [
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "left"
+    ]
+   ]
+  },
+  {
+   "name": "a hand drifting past the midline keeps the slot its track voted for",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.35,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.4,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.45,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.5,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.55,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.6,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.65,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    }
+   ],
+   "expected": [
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "left"
+    ]
+   ]
+  },
+  {
+   "name": "a jump larger than the continuity distance starts a new track",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.7,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.7,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    }
+   ],
+   "expected": [
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [
+     "right"
+    ],
+    [
+     "right"
+    ]
+   ]
+  },
+  {
+   "name": "two hands crossing keep their slots",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.3,
+       0.45
+      ],
+      [
+       0.7,
+       0.55
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.38,
+       0.45
+      ],
+      [
+       0.62,
+       0.55
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.46,
+       0.45
+      ],
+      [
+       0.54,
+       0.55
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.54,
+       0.45
+      ],
+      [
+       0.46,
+       0.55
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.62,
+       0.45
+      ],
+      [
+       0.38,
+       0.55
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    }
+   ],
+   "expected": [
+    [
+     "left",
+     "right"
+    ],
+    [
+     "left",
+     "right"
+    ],
+    [
+     "left",
+     "right"
+    ],
+    [
+     "left",
+     "right"
+    ],
+    [
+     "left",
+     "right"
+    ]
+   ]
+  },
+  {
+   "name": "two tracks voting for one slot: the weaker takes the other",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.2,
+       0.45
+      ],
+      [
+       0.4,
+       0.55
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.2,
+       0.45
+      ],
+      [
+       0.4,
+       0.55
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.2,
+       0.45
+      ],
+      [
+       0.4,
+       0.55
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    }
+   ],
+   "expected": [
+    [
+     "left",
+     "right"
+    ],
+    [
+     "left",
+     "right"
+    ],
+    [
+     "left",
+     "right"
+    ]
+   ]
+  },
+  {
+   "name": "the weaker track moves even when detected first",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.4,
+       0.55
+      ],
+      [
+       0.2,
+       0.45
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.4,
+       0.55
+      ],
+      [
+       0.2,
+       0.45
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.4,
+       0.55
+      ],
+      [
+       0.2,
+       0.45
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    }
+   ],
+   "expected": [
+    [
+     "right",
+     "left"
+    ],
+    [
+     "right",
+     "left"
+    ],
+    [
+     "right",
+     "left"
+    ]
+   ]
+  },
+  {
+   "name": "a frame with no hands ends every track",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [],
+     "pose_wrists": {
+      "left": [
+       0.25,
+       0.5
+      ],
+      "right": [
+       0.75,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.32,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.6,
+       0.5
+      ],
+      "right": [
+       0.3,
+       0.5
+      ]
+     }
+    },
+    {
+     "hands": [
+      [
+       0.32,
+       0.5
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.6,
+       0.5
+      ],
+      "right": [
+       0.3,
+       0.5
+      ]
+     }
+    }
+   ],
+   "expected": [
+    [
+     "left"
+    ],
+    [
+     "left"
+    ],
+    [],
+    [
+     "right"
+    ],
+    [
+     "right"
+    ]
+   ]
+  },
+  {
+   "name": "no pose: a lone hand goes left",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": null
+    },
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ]
+     ],
+     "pose_wrists": null
+    }
+   ],
+   "expected": [
+    [
+     "left"
+    ],
+    [
+     "left"
+    ]
+   ]
+  },
+  {
+   "name": "no pose: of two hands, the later track moves right",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ],
+      [
+       0.7,
+       0.5
+      ]
+     ],
+     "pose_wrists": null
+    },
+    {
+     "hands": [
+      [
+       0.3,
+       0.5
+      ],
+      [
+       0.7,
+       0.5
+      ]
+     ],
+     "pose_wrists": null
+    }
+   ],
+   "expected": [
+    [
+     "left",
+     "right"
+    ],
+    [
+     "left",
+     "right"
+    ]
+   ]
+  },
+  {
+   "name": "vertical distance is scaled by the aspect ratio",
+   "aspect": 0.25,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.42,
+       0.4
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.3,
+       0.3
+      ],
+      "right": [
+       0.5,
+       0.7
+      ]
+     }
+    }
+   ],
+   "expected": [
+    [
+     "right"
+    ]
+   ]
+  },
+  {
+   "name": "the same position at aspect 1 is nearer the left wrist",
+   "aspect": 1.0,
+   "frames": [
+    {
+     "hands": [
+      [
+       0.42,
+       0.4
+      ]
+     ],
+     "pose_wrists": {
+      "left": [
+       0.3,
+       0.3
+      ],
+      "right": [
+       0.5,
+       0.7
+      ]
+     }
+    }
+   ],
+   "expected": [
+    [
+     "left"
+    ]
+   ]
+  }
+ ]
+}

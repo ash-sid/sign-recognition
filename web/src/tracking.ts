@@ -212,6 +212,143 @@ export function trackFrame(
   };
 }
 
+// --- sequence-level slot assignment --------------------------------------
+
+/**
+ * Largest mean landmark distance, in image widths, at which a hand in one
+ * frame is taken to be the same hand as one in the frame before. 60 pixels at
+ * the 640-pixel width the live page captures.
+ */
+export const CONTINUITY = 60 / 640;
+
+export interface SequenceFrame {
+  /** Detected hands in detection order. */
+  hands: NormalizedLandmark[][];
+  pose: NormalizedLandmark[] | undefined;
+}
+
+/** Mean distance over corresponding landmarks, in image widths. */
+function meanDistance(a: NormalizedLandmark[], b: NormalizedLandmark[], aspect: number): number {
+  let total = 0;
+  for (let i = 0; i < a.length; i++) {
+    const dx = a[i].x - b[i].x;
+    const dy = (a[i].y - b[i].y) * aspect;
+    total += Math.sqrt(dx * dx + dy * dy);
+  }
+  return total / a.length;
+}
+
+/** Pair this frame's hands with the previous frame's by least total distance. */
+function pairHands(
+  current: NormalizedLandmark[][],
+  previous: NormalizedLandmark[][],
+  aspect: number,
+): [number, number, number][] {
+  const n = current.length;
+  const m = previous.length;
+  if (n === 0 || m === 0) return [];
+  if (n > 2 || m > 2) throw new Error("at most two hands per frame");
+  const d = current.map((c) => previous.map((p) => meanDistance(c, p, aspect)));
+  if (n === 1 && m === 1) return [[0, 0, d[0][0]]];
+  if (n === 1) {
+    const j = d[0][0] <= d[0][1] ? 0 : 1;
+    return [[0, j, d[0][j]]];
+  }
+  if (m === 1) {
+    const i = d[0][0] <= d[1][0] ? 0 : 1;
+    return [[i, 0, d[i][0]]];
+  }
+  if (d[0][0] + d[1][1] <= d[0][1] + d[1][0]) {
+    return [
+      [0, 0, d[0][0]],
+      [1, 1, d[1][1]],
+    ];
+  }
+  return [
+    [0, 1, d[0][1]],
+    [1, 0, d[1][0]],
+  ];
+}
+
+/** +1 on the left pose wrist, -1 on the right, 0 without a pose. */
+function wristMargin(hand: NormalizedLandmark[], pose: NormalizedLandmark[] | undefined, aspect: number): number {
+  if (!pose) return 0;
+  const wrist = hand[HAND_WRIST];
+  const lx = wrist.x - pose[POSE_LEFT_WRIST].x;
+  const ly = (wrist.y - pose[POSE_LEFT_WRIST].y) * aspect;
+  const rx = wrist.x - pose[POSE_RIGHT_WRIST].x;
+  const ry = (wrist.y - pose[POSE_RIGHT_WRIST].y) * aspect;
+  const left = lx * lx + ly * ly;
+  const right = rx * rx + ry * ry;
+  if (left + right === 0) return 0;
+  return (right - left) / (right + left);
+}
+
+/**
+ * Slot start index for every detected hand in every frame of a sequence, one
+ * decision per hand for the whole sequence. Port of
+ * src/tracking.py:assign_sequence_slots, which explains the rule; both are
+ * held to web/tests/fixtures/sequence_slots.json and
+ * sequence_slots_generated.json.
+ *
+ * Hands are linked frame to frame into tracks, and each track takes the slot
+ * its summed wrist margin points to. Matching each frame on its own moves a
+ * stationary hand between slots whenever the pose wrists are closer together
+ * than their own error, as they are when the arms cross. Not yet used by the
+ * live page, whose model was trained on frame-by-frame slotting.
+ *
+ * `aspect` is image height over width.
+ */
+export function assignSequenceSlots(frames: SequenceFrame[], aspect: number): number[][] {
+  const ids: number[][] = [];
+  const total: number[] = [];
+  let previous: { hand: NormalizedLandmark[]; track: number }[] = [];
+  for (const frame of frames) {
+    const current: (number | undefined)[] = frame.hands.map(() => undefined);
+    const pairs = pairHands(
+      frame.hands,
+      previous.map((p) => p.hand),
+      aspect,
+    );
+    for (const [i, j, d] of pairs) {
+      if (d < CONTINUITY) current[i] = previous[j].track;
+    }
+    const tracks = current.map((track) => {
+      if (track !== undefined) return track;
+      total.push(0);
+      return total.length - 1;
+    });
+    frame.hands.forEach((hand, i) => {
+      total[tracks[i]] += wristMargin(hand, frame.pose, aspect);
+    });
+    ids.push(tracks);
+    previous = frame.hands.map((hand, i) => ({ hand, track: tracks[i] }));
+  }
+
+  const weaker = (a: number, b: number): number =>
+    Math.abs(total[b]) < Math.abs(total[a]) || (Math.abs(total[b]) === Math.abs(total[a]) && b > a)
+      ? b
+      : a;
+  const other = (slot: number): number => (slot === LEFT_HAND_START ? RIGHT_HAND_START : LEFT_HAND_START);
+
+  const slot: number[] = total.map((t) => (t >= 0 ? LEFT_HAND_START : RIGHT_HAND_START));
+  for (const tracks of ids) {
+    if (tracks.length === 2 && slot[tracks[0]] === slot[tracks[1]]) {
+      const moved = weaker(tracks[0], tracks[1]);
+      slot[moved] = other(slot[moved]);
+    }
+  }
+
+  return ids.map((tracks) => {
+    const slots: number[] = tracks.map((t) => slot[t]);
+    if (slots.length === 2 && slots[0] === slots[1]) {
+      const i = weaker(tracks[0], tracks[1]) === tracks[0] ? 0 : 1;
+      slots[i] = other(slots[i]);
+    }
+    return slots;
+  });
+}
+
 /** Hand landmark pairs, for drawing a skeleton over the video. */
 export const HAND_BONES: [number, number][] = [
   [0, 1], [1, 2], [2, 3], [3, 4],

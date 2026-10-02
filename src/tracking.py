@@ -22,9 +22,16 @@ reason.
 Held to web/src/tracking.ts by a shared hand-written fixture,
 web/tests/fixtures/slots.json, checked by tests/test_slots.py here and by
 web/tests/slots.test.ts there.
+
+assign_sequence_slots() decides slots for a whole sequence at once instead of
+frame by frame; see its docstring for why. It is held to its TypeScript port
+by web/tests/fixtures/sequence_slots.json, written by hand, and by
+web/tests/fixtures/sequence_slots_generated.json, written by
+src/make_sequence_fixture.py from this implementation.
 """
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 import numpy as np
@@ -110,3 +117,139 @@ def to_contract_layout(hands: np.ndarray, pose: np.ndarray) -> np.ndarray:
     if pose.shape[1:] != (POSE_LANDMARKS, NUM_COORDS):
         raise ValueError(f"expected pose (T, {POSE_LANDMARKS}, 3), got {pose.shape}")
     return np.concatenate([hands, pose[:, list(POSE_SOURCE_INDICES)]], axis=1)
+
+
+# --- sequence-level slot assignment --------------------------------------------
+
+# Largest mean landmark distance, in image widths, at which a hand in one frame
+# is taken to be the same hand as one in the frame before. 60 pixels at the
+# 640-pixel width the live page captures.
+CONTINUITY = 60 / 640
+
+
+def _mean_distance(a: list, b: list, aspect: float) -> float:
+    """Mean distance over corresponding landmarks of two hands, in image
+    widths. `aspect` is height over width, so that a vertical step counts the
+    same as a horizontal one of equal length on screen. Summed in landmark
+    order with sqrt rather than hypot, so the browser port can reproduce it
+    exactly."""
+    total = 0.0
+    for p, q in zip(a, b):
+        dx = p[0] - q[0]
+        dy = (p[1] - q[1]) * aspect
+        total += math.sqrt(dx * dx + dy * dy)
+    return total / len(a)
+
+
+def _pair(current: list, previous: list, aspect: float) -> list[tuple[int, int, float]]:
+    """Pair hands in this frame with hands in the previous one by the
+    assignment with least total distance. At most two hands on either side."""
+    n, m = len(current), len(previous)
+    if n == 0 or m == 0:
+        return []
+    if n > 2 or m > 2:
+        raise ValueError("at most two hands per frame")
+    d = [[_mean_distance(c, p, aspect) for p in previous] for c in current]
+    if n == 1 and m == 1:
+        return [(0, 0, d[0][0])]
+    if n == 1:
+        j = 0 if d[0][0] <= d[0][1] else 1
+        return [(0, j, d[0][j])]
+    if m == 1:
+        i = 0 if d[0][0] <= d[1][0] else 1
+        return [(i, 0, d[i][0])]
+    if d[0][0] + d[1][1] <= d[0][1] + d[1][0]:
+        return [(0, 0, d[0][0]), (1, 1, d[1][1])]
+    return [(0, 1, d[0][1]), (1, 0, d[1][0])]
+
+
+def _wrist_margin(hand: list, pose: list | None, aspect: float) -> float:
+    """How much nearer this hand's wrist is to the left pose wrist than to the
+    right, from +1 (on the left wrist) to -1 (on the right), 0 without a pose."""
+    if pose is None:
+        return 0.0
+    lx = hand[HAND_WRIST][0] - pose[POSE_LEFT_WRIST][0]
+    ly = (hand[HAND_WRIST][1] - pose[POSE_LEFT_WRIST][1]) * aspect
+    rx = hand[HAND_WRIST][0] - pose[POSE_RIGHT_WRIST][0]
+    ry = (hand[HAND_WRIST][1] - pose[POSE_RIGHT_WRIST][1]) * aspect
+    left = lx * lx + ly * ly
+    right = rx * rx + ry * ry
+    if left + right == 0:
+        return 0.0
+    return (right - left) / (right + left)
+
+
+def assign_sequence_slots(
+    hands: Sequence[Sequence[np.ndarray]],
+    poses: Sequence[np.ndarray | None],
+    aspect: float,
+) -> list[list[int]]:
+    """Slot start index for every detected hand in every frame of a sequence.
+
+    `hands[t]` holds frame t's detected hands as (21, 3) arrays in detection
+    order, `poses[t]` its (33, 3) pose or None, and `aspect` is image height
+    over width.
+
+    Frame-by-frame matching to the nearer pose wrist moves a stationary hand
+    between slots whenever the pose wrists are closer together than their own
+    error, which is routine when the arms cross: the pose model's wrists
+    disagree by tens of pixels between runtimes. A hand that alternates slots
+    leaves both slots mostly present with gaps, and preprocessing then
+    interpolates across the gaps, inventing motion in both.
+
+    So hands are first linked from frame to frame into tracks -- a hand within
+    CONTINUITY of a hand in the previous frame continues its track, and a frame
+    with no hands ends every track -- and each track then takes one slot for
+    its whole length, by the sign of its summed wrist margin. Many noisy
+    comparisons average out where one does not. Where two tracks that share a
+    frame voted for the same slot, the one with the smaller summed margin takes
+    the other slot, the later-starting one on a tie; if a chain of such
+    corrections still leaves two hands in one slot in some frame, the same
+    comparison separates them in that frame alone.
+
+    Called on a whole video for training data, and on the frames of one window
+    in the browser, so each tensor the model sees has one decision per hand.
+    Arithmetic is on Python floats in a fixed order, as in the browser port.
+    """
+    frames = [[np.asarray(h).tolist() for h in frame] for frame in hands]
+    pose_lists = [None if p is None else np.asarray(p).tolist() for p in poses]
+
+    ids: list[list[int]] = []
+    total: list[float] = []
+    previous: list[tuple[list, int]] = []
+    for frame, pose in zip(frames, pose_lists):
+        current: list[int | None] = [None] * len(frame)
+        for i, j, d in _pair(frame, [h for h, _ in previous], aspect):
+            if d < CONTINUITY:
+                current[i] = previous[j][1]
+        for i in range(len(frame)):
+            if current[i] is None:
+                current[i] = len(total)
+                total.append(0.0)
+        for hand, track in zip(frame, current):
+            total[track] += _wrist_margin(hand, pose, aspect)
+        ids.append(current)
+        previous = list(zip(frame, current))
+
+    def weaker(a: int, b: int) -> int:
+        if abs(total[b]) < abs(total[a]) or (abs(total[b]) == abs(total[a]) and b > a):
+            return b
+        return a
+
+    def other(slot: int) -> int:
+        return RIGHT_HAND_START if slot == LEFT_HAND_START else LEFT_HAND_START
+
+    slot = [LEFT_HAND_START if t >= 0 else RIGHT_HAND_START for t in total]
+    for tracks in ids:
+        if len(tracks) == 2 and slot[tracks[0]] == slot[tracks[1]]:
+            moved = weaker(tracks[0], tracks[1])
+            slot[moved] = other(slot[moved])
+
+    out = []
+    for tracks in ids:
+        slots = [slot[t] for t in tracks]
+        if len(slots) == 2 and slots[0] == slots[1]:
+            i = 0 if weaker(tracks[0], tracks[1]) == tracks[0] else 1
+            slots[i] = other(slots[i])
+        out.append(slots)
+    return out
