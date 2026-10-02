@@ -37,7 +37,13 @@ Measured and reported:
     the two sides put the same hand in different slots.
 
 The slot rules are evaluated, not asserted. They are a design choice whose
-effect this measures.
+effect this measures. The first four decide frame by frame, or carry the
+previous frame's decision forward; the last two are
+tracking.assign_sequence_slots, which links hands into tracks and gives each
+track one slot, run over a whole clip as for training videos and over the
+trailing window the live page would see. For those two, flips within a run
+come only from tracks breaking, and from a window's vote changing as it
+slides.
 
 Run:
     uv run python tests\\test_seam.py (Get-ChildItem tests\\fixtures\\seam\\seam_*.json).FullName --python tests\\fixtures\\seam
@@ -240,11 +246,41 @@ def stateless(rule):
     return run
 
 
+def _sequence_slots(frames: list[Frame], size) -> list[list[str]]:
+    slots = tracking.assign_sequence_slots(
+        [[h.landmarks for h in f.hands] for f in frames],
+        [f.pose for f in frames],
+        size[1] / size[0],
+    )
+    return [[SLOT_NAME[s] for s in frame] for frame in slots]
+
+
+def track_vote(frames: list[Frame], size) -> list[list[str]]:
+    """tracking.assign_sequence_slots over the whole clip, as for a training
+    video."""
+    return _sequence_slots(frames, size)
+
+
+def track_vote_window(width: int):
+    """tracking.assign_sequence_slots over the `width` frames ending at each
+    frame, keeping that frame's slots: what a live window would show for its
+    newest frame."""
+
+    def run(frames: list[Frame], size) -> list[list[str]]:
+        return [_sequence_slots(frames[max(0, t - width + 1) : t + 1], size)[-1] for t in range(len(frames))]
+
+    return run
+
+
+WINDOW = 48
+
 RULES = {
     "nearest pose wrist (current)": stateless(rule_nearest_wrist),
     "handedness label": stateless(rule_handedness),
     "keep previous, else nearest wrist": keep_previous(rule_nearest_wrist),
     "keep previous, else handedness": keep_previous(rule_handedness),
+    "track vote, whole sequence": track_vote,
+    f"track vote, {WINDOW}-frame window": track_vote_window(WINDOW),
 }
 
 
